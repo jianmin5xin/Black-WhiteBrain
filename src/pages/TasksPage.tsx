@@ -525,6 +525,7 @@ export default function TasksPage() {
       safety: { risk_level: 'low', fallback_action: 'stop', max_action_rate_per_second: 5 },
       metrics: { success_rate: 0, avg_latency_ms: 0, sample_count: 0 },
       status: 'candidate',
+      environment_profile_id: newEnvProfileId === 'none' ? null : newEnvProfileId,
       version: '1.0.0',
       task_id: taskData.id,
       user_id: user.id,

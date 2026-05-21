@@ -266,6 +266,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { task_run_id, task_name, target_url, steps, error_message } = body;
     // skill_card_id 由前端从 task_run 读取后传入，用于需求 5（failure episode 绑定完整性）
     const skill_card_id: string | null = body.skill_card_id ?? null;
+    const environment_profile_id: string | null = body.environment_profile_id ?? null;
 
     if (!task_run_id || !task_name || !target_url) {
       return new Response(JSON.stringify({ error: "Missing required fields: task_run_id, task_name, target_url" }), {
@@ -521,6 +522,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             task_run_id,
             // 需求 5：failure episode 必须记录 skill_card_id
             skill_card_id: skill_card_id,
+            environment_profile_id: environment_profile_id,
             tags: ["white_matter", "failure_analysis", analysis.failure_type ?? "unknown"],
             user_id: user.id,
           });

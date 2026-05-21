@@ -9,12 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Slider } from '@/components/ui/slider';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import type { SkillCard, SkillStatus, SkillHistory, RiskLevel } from '@/types/types';
+import type { SkillCard, SkillStatus, SkillHistory, RiskLevel, EnvironmentProfile } from '@/types/types';
 import {
   Plus, Layers, Activity, CheckCircle, Clock, RefreshCw, ChevronRight,
   Settings, GitBranch, BarChart3, Shield, Zap, Eye, Trash2, ArrowRight,
@@ -347,6 +347,14 @@ export default function SkillsPage() {
   const [newPerceptions, setNewPerceptions] = useState('dom, url, title, visible_text, screenshot, console_errors');
   const [newExecutions, setNewExecutions] = useState('click, fill, navigate, screenshot');
   const [newFeedbacks, setNewFeedbacks] = useState('page_redirect, element_change, dialog_popup');
+  const [newEnvProfileId, setNewEnvProfileId] = useState<string>('none');
+  const [envProfiles, setEnvProfiles] = useState<EnvironmentProfile[]>([]);
+
+  const fetchEnvProfiles = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase.from('environment_profiles').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+    setEnvProfiles(Array.isArray(data) ? data : []);
+  }, [user]);
 
   const fetchSkills = useCallback(async () => {
     if (!user) return;
@@ -357,7 +365,7 @@ export default function SkillsPage() {
   }, [user]);
 
   // 首次加载
-  useEffect(() => { fetchSkills(); }, [fetchSkills]);
+  useEffect(() => { fetchSkills(); fetchEnvProfiles(); }, [fetchSkills, fetchEnvProfiles]);
 
   // Realtime：skill_cards 表有 INSERT / UPDATE / DELETE 时自动刷新列表
   const { lastChange } = useRealtimeSync({
@@ -387,12 +395,13 @@ export default function SkillsPage() {
       metrics: { success_rate: 0, avg_latency_ms: 0, sample_count: 0 },
       status: 'candidate',
       version: '1.0.0',
+      environment_profile_id: newEnvProfileId === 'none' ? null : newEnvProfileId,
       user_id: user.id,
     });
     if (error) { toast.error('创建失败: ' + error.message); return; }
     toast.success('技能卡创建成功');
     setCreateOpen(false);
-    setNewName(''); setNewSkillId('');
+    setNewName(''); setNewSkillId(''); setNewEnvProfileId('none');
     fetchSkills();
   };
 
@@ -437,6 +446,20 @@ export default function SkillsPage() {
                         <Label className="text-xs font-mono text-muted-foreground">技能ID</Label>
                         <Input value={newSkillId} onChange={e => setNewSkillId(e.target.value)} className="h-8 text-xs font-mono bg-background border-border" placeholder="如：web.form_fill.v1" />
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-mono text-muted-foreground">环境画像绑定（可选）</Label>
+                      <Select value={newEnvProfileId} onValueChange={setNewEnvProfileId}>
+                        <SelectTrigger className="h-8 text-xs font-mono bg-background border-border">
+                          <SelectValue placeholder="选择环境画像" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none" className="text-xs font-mono">-- 不绑定 --</SelectItem>
+                          {envProfiles.map(p => (
+                            <SelectItem key={p.id} value={p.id} className="text-xs font-mono">{p.url} ({new Date(p.created_at).toLocaleDateString()})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-mono text-muted-foreground">环境类型</Label>

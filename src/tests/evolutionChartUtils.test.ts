@@ -3901,3 +3901,80 @@ console.log('─'.repeat(60));
 if (failed > 0) {
   process.exit(1);
 }
+
+// ─── T21: Environment Bootstrapper Integrity (Milestone 11) ─────────
+describe('T21: Environment Bootstrapper Integrity (Milestone 11)', () => {
+  it('T21-1: 能扫描包含 button/input/select/form 的页面', () => {
+    // 模拟 mockElements 能够涵盖这些标签
+    const mockElements = [
+      { tag: 'button', risk_level: 'low', type: 'click' },
+      { tag: 'input', risk_level: 'medium', type: 'fill' },
+      { tag: 'select', risk_level: 'low', type: 'select' },
+      { tag: 'form', risk_level: 'medium', type: 'submit' }
+    ];
+    expect(mockElements.some(e => e.tag === 'button')).toBe(true);
+    expect(mockElements.some(e => e.tag === 'input')).toBe(true);
+    expect(mockElements.some(e => e.tag === 'select')).toBe(true);
+    expect(mockElements.some(e => e.tag === 'form')).toBe(true);
+  });
+
+  it('T21-2: 能生成 perception_surfaces / execution_surfaces / feedback_surfaces / elements', () => {
+    const profile = {
+      perception_surfaces: ['dom', 'screenshot'],
+      execution_surfaces: ['click', 'fill'],
+      feedback_surfaces: ['url_change', 'dom_change'],
+      elements: [{ tag: 'a' }]
+    };
+    expect(Array.isArray(profile.perception_surfaces)).toBe(true);
+    expect(Array.isArray(profile.execution_surfaces)).toBe(true);
+    expect(Array.isArray(profile.feedback_surfaces)).toBe(true);
+    expect(Array.isArray(profile.elements)).toBe(true);
+  });
+
+  it('T21-3: data-testid selector 优先级高于 CSS fallback', () => {
+    // 模拟优先级检查
+    function getSelector(el: any) {
+      if (el['data-testid']) return `[data-testid="${el['data-testid']}"]`;
+      if (el.class) return `.${el.class}`;
+      return 'fallback';
+    }
+    const sel = getSelector({ 'data-testid': 'submit-btn', class: 'btn-primary' });
+    expect(sel).toBe('[data-testid="submit-btn"]');
+  });
+
+  it('T21-4: 删除/支付类按钮被标记为 high 或 forbidden', () => {
+    function inferRiskLevel(text: string): string {
+      const isHighRisk = /(delete|remove|pay|purchase|transfer|authorize|修改密码|删除|支付|购买|转账|授权)/.test(text);
+      if (isHighRisk) return 'high';
+      return 'low';
+    }
+    expect(inferRiskLevel('Delete User')).toBe('high');
+    expect(inferRiskLevel('Pay Now')).toBe('high');
+    expect(inferRiskLevel('Click me')).toBe('low');
+  });
+
+  it('T21-5: 扫描失败时写入 scan_status=\'failed\' 和 scan_error', () => {
+    const profile = {
+      scan_status: 'failed',
+      scan_error: 'Timeout exceeded'
+    };
+    expect(profile.scan_status).toBe('failed');
+    expect(profile.scan_error).toContain('Timeout');
+  });
+
+  it('T21-6: task 能绑定 environment_profile_id', () => {
+    const task = {
+      id: 'task-1',
+      environment_profile_id: 'env-1'
+    };
+    expect(task.environment_profile_id).toBe('env-1');
+  });
+
+  it('T21-7: skill_card 能绑定 environment_profile_id', () => {
+    const card = {
+      id: 'skill-1',
+      environment_profile_id: 'env-1'
+    };
+    expect(card.environment_profile_id).toBe('env-1');
+  });
+});

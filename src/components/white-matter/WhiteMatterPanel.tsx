@@ -350,6 +350,7 @@ export default function WhiteMatterPanel({ taskRun, task, onAnalysisComplete, au
         // 需求 3：param_patches 默认作用于 task_run.skill_card_id
         // 传入 Edge Function 使 failure episode 记录完整绑定（需求 5）
         skill_card_id: taskRun.skill_card_id ?? null,
+        environment_profile_id: task.environment_profile_id ?? null,
         steps: buildSteps(),
         steps_result: buildStepsResult(),
         error_message: taskRun.error_message,

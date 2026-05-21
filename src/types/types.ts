@@ -226,6 +226,7 @@ export interface SkillCard {
   status: SkillStatus;
   version: string;
   task_id: string | null;
+  environment_profile_id: string | null;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -265,6 +266,7 @@ export interface MemoryEpisode {
   skill_card_id: string | null;
   task_id: string | null;
   task_run_id: string | null;
+  environment_profile_id: string | null;
   tags: string[];
   user_id: string;
   created_at: string;

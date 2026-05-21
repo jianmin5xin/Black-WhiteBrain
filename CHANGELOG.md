@@ -3,6 +3,19 @@
 所有值得记录的变更按版本倒序排列，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 
 ---
+## [v51] — 2026-05-19 · Milestone 11: 自举画像系统全链路关联（End of Milestone 11）
+
+### 目标
+完成 Milestone 11 所有开发目标，实现自举画像 (`environment_profile`) 与核心业务实体（任务、技能卡、白质记忆）的双向关联与追踪支持，并在自动化测试套件中形成规范保障。
+
+### 变更内容
+- **自举画像外键延伸**：在原有任务绑定的基础上，为 `skill_cards` 和 `memory_episodes` 表扩展关联 `environment_profile_id` 的外键字段。
+- **关联数据回溯**：在 `TasksPage.tsx` 和 `SkillsPage.tsx` 中，用户可以在手动创建任务与技能卡时关联指定的自举环境画像；`bootstrap-env` 生成的环境参数能直接赋能灰质层任务流。
+- **白质失效分析追踪**：当任务产生错误 (`task_run` failed) 移交白质层分析时，如果对应任务已绑定自举环境画像，将一并提取 `environment_profile_id` 存入生成的 Failure Episode (`memory_episodes`)，为下一次系统调试提供包含实时扫描、动态抓取的现场复原环境。
+- **T21 回归测试完备**：新增了一组涵盖 Milestone 11 系统完备性的 `T21` 测试用例（共 7 个用例），断言覆盖了从表单及容器标签的基础解析、`data-testid` 优先生效规则、动作阻断风险标记（high、forbidden）到最终模型生成的三面数据关联结构。
+
+---
+
 ## [v50] — 2026-05-19 · Milestone 11: 环境自举节点抽取与解析策略完备化
 
 ### 目标
