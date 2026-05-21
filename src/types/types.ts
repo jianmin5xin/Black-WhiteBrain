@@ -42,6 +42,7 @@ export interface Task {
   last_run_at: string | null;
   run_count: number;
   success_count: number;
+  environment_profile_id: string | null;
   /** 创建任务时自动生成的候选技能卡 ID */
   skill_card_id: string | null;
   user_id: string;

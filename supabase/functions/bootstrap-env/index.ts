@@ -32,16 +32,46 @@ function extractDomInfo() {
   const results: any[] = [];
   
   function getElementSelector(el: Element): string {
+    // 1. data-testid / data-test / data-cy
     if (el.getAttribute('data-testid')) return `[data-testid="${el.getAttribute('data-testid')}"]`;
     if (el.getAttribute('data-test')) return `[data-test="${el.getAttribute('data-test')}"]`;
+    if (el.getAttribute('data-cy')) return `[data-cy="${el.getAttribute('data-cy')}"]`;
+    
+    // 2. aria-label
+    if (el.getAttribute('aria-label')) return `[aria-label="${el.getAttribute('aria-label')}"]`;
+    
+    // 3. role + accessible name
+    const role = el.getAttribute('role');
+    const title = el.getAttribute('title');
+    if (role && title) return `[role="${role}"][title="${title}"]`;
+    
+    // 4. label 对应 input
+    if (el.id) {
+      const label = document.querySelector(`label[for="${el.id}"]`);
+      if (label && label.textContent) {
+        return `text="${label.textContent.trim()}"`; // 借用 Playwright text 引擎
+      }
+    }
+    
+    // 5. id
     if (el.id) return `#${el.id}`;
+    
+    // 6. name
     if (el.getAttribute('name')) return `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`;
     
-    // 生成基于 class 和结构的备选
+    // 7. placeholder
+    if (el.getAttribute('placeholder')) return `[placeholder="${el.getAttribute('placeholder')}"]`;
+    
+    // 8. text
+    const text = el.textContent?.trim();
+    if (text && text.length > 0 && text.length < 50) return `text="${text}"`;
+    
+    // 9. CSS fallback
     const classes = Array.from(el.classList).filter(c => !c.includes('hover') && !c.includes('active')).join('.');
     if (classes) return `${el.tagName.toLowerCase()}.${classes}`;
     
-    return el.tagName.toLowerCase();
+    // 10. XPath fallback
+    return `//${el.tagName.toLowerCase()}`;
   }
 
   function calculateStableScore(el: Element): number {
@@ -60,11 +90,16 @@ function extractDomInfo() {
 
   function inferRiskLevel(el: Element): string {
     const text = (el.textContent || el.getAttribute('value') || el.getAttribute('aria-label') || '').toLowerCase();
-    const isDestructive = /(delete|remove|clear|drop|destroy|trash|pay|checkout)/.test(text);
-    const isStateChange = /(submit|save|update|confirm|apply|send)/.test(text);
     
-    if (isDestructive) return 'high';
-    if (isStateChange) return 'medium';
+    // high 或 forbidden
+    const isHighRisk = /(delete|remove|pay|purchase|transfer|authorize|修改密码|删除|支付|购买|转账|授权)/.test(text);
+    if (isHighRisk) return 'high';
+    
+    // medium
+    const isMediumRisk = /(submit|login|send|save|update|confirm|apply|登录|发送|提交|保存|更新|确认)/.test(text);
+    if (isMediumRisk) return 'medium';
+    
+    // low (默认)
     return 'low';
   }
 

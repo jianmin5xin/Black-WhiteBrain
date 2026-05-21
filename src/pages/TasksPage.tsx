@@ -8,12 +8,13 @@ import { useBrowserNotification } from '@/hooks/use-browser-notification';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import type { Task, TaskStep, TaskRun, ActionType, WhiteMatterAnalysis, PatchEvaluationResult, ApplyRollbackResult } from '@/types/types';
+import type { Task, TaskStep, TaskRun, ActionType, WhiteMatterAnalysis, PatchEvaluationResult, ApplyRollbackResult, EnvironmentProfile } from '@/types/types';
 import WhiteMatterPanel from '@/components/white-matter/WhiteMatterPanel';
 import { insertNotification, sendBrowserNotification } from '@/lib/notifications';
 import {
@@ -419,6 +420,14 @@ export default function TasksPage() {
   const [newUrl, setNewUrl] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newSteps, setNewSteps] = useState<TaskStep[]>([]);
+  const [newEnvProfileId, setNewEnvProfileId] = useState<string>('none');
+  const [envProfiles, setEnvProfiles] = useState<EnvironmentProfile[]>([]);
+
+  const fetchEnvProfiles = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase.from('environment_profiles').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+    setEnvProfiles(Array.isArray(data) ? data : []);
+  }, [user]);
 
   const fetchTasks = useCallback(async () => {
     if (!user) return;
@@ -435,7 +444,7 @@ export default function TasksPage() {
     setRunsLoading(false);
   }, []);
 
-  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+  useEffect(() => { fetchTasks(); fetchEnvProfiles(); }, [fetchTasks, fetchEnvProfiles]);
 
   // Realtime：tasks 表变更 → 刷新任务列表（状态、run_count 等实时同步）
   const { lastChange: tasksChange } = useRealtimeSync({
@@ -498,6 +507,7 @@ export default function TasksPage() {
       description: newDesc.trim() || null,
       steps_json: newSteps,
       status: 'pending',
+      environment_profile_id: newEnvProfileId === 'none' ? null : newEnvProfileId,
       user_id: user.id,
     }).select('id').maybeSingle();
     if (error || !taskData) { toast.error('创建失败: ' + (error?.message ?? '未知错误')); return; }
@@ -527,7 +537,7 @@ export default function TasksPage() {
 
     toast.success('任务创建成功，已自动生成候选技能卡');
     setCreateOpen(false);
-    setNewName(''); setNewUrl(''); setNewDesc(''); setNewSteps([]);
+    setNewName(''); setNewUrl(''); setNewDesc(''); setNewSteps([]); setNewEnvProfileId('none');
     fetchTasks();
   };
 
@@ -762,6 +772,20 @@ export default function TasksPage() {
                         <Label className="text-xs font-mono text-muted-foreground">目标URL</Label>
                         <Input value={newUrl} onChange={e => setNewUrl(e.target.value)} className="h-8 text-xs font-mono bg-background border-border" placeholder="https://example.com" />
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-mono text-muted-foreground">环境画像绑定（可选）</Label>
+                      <Select value={newEnvProfileId} onValueChange={setNewEnvProfileId}>
+                        <SelectTrigger className="h-8 text-xs font-mono bg-background border-border">
+                          <SelectValue placeholder="选择环境画像" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none" className="text-xs font-mono">-- 不绑定 --</SelectItem>
+                          {envProfiles.map(p => (
+                            <SelectItem key={p.id} value={p.id} className="text-xs font-mono">{p.url} ({new Date(p.created_at).toLocaleDateString()})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-mono text-muted-foreground">描述（可选）</Label>

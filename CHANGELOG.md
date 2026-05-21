@@ -3,6 +3,18 @@
 所有值得记录的变更按版本倒序排列，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 
 ---
+## [v50] — 2026-05-19 · Milestone 11: 环境自举节点抽取与解析策略完备化
+
+### 目标
+完成自举系统的解析规则升级，按照严格的优先级推导高可靠性操作选择器（Selector），完善不同表单与动作节点的特征提取与动作分级，并实现测试与执行环境中绑定配置文件的能力，收官第十一里程碑。
+
+### 变更内容
+- **优先级推导生成**：Edge Function 抓取元素的 Selector 提取逻辑重构为 10 级后备优先顺序，针对 `data-testid`、`data-test` 以及 `data-cy` 提供最优先解析策略，其后依次匹配 `aria-label`、`role+title` 组合、针对 Input 的 `label` 文本以及 `id/name`，最后回退至 `xpath` 和 `text` 搜索，极大提高了前端渲染层元素的稳定性。
+- **动态风险预分类**：基于节点的推测用途（删除、购买、转账、Checkout、修改密码等敏感行为）准确打上 `high` 或者 `forbidden` 的阻断级 `risk_level`；基础表单与提交状态为 `medium`；其它的展示读取为 `low` 级别。
+- **支持画像资源绑定**：新增迁移 `00032_add_environment_profile_id_to_tasks.sql` 向 `tasks` 表扩展 `environment_profile_id` 关联外键；并在任务管理页面补充可交互的环境画像绑定选择器，为每个新任务建立目标场景执行面的强约束依赖。
+
+---
+
 ## [v49] — 2026-05-19 · Milestone 11: 基于 Playwright 的全景扫描与动态探测自举
 
 ### 目标
