@@ -1,0 +1,1 @@
+ALTER TABLE profiles ADD COLUMN auto_analyze_on_failure boolean NOT NULL DEFAULT false;

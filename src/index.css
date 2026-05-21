@@ -1,0 +1,218 @@
+/* stylelint-disable */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 灰质-白质智能体平台设计系统 */
+
+@layer base {
+  :root {
+    --radius: 0.125rem;
+
+    /* 深色科技主题 */
+    --background: 216 18% 8%;
+    --foreground: 210 25% 92%;
+    --card: 216 18% 11%;
+    --card-foreground: 210 25% 92%;
+    --popover: 216 18% 11%;
+    --popover-foreground: 210 25% 92%;
+
+    /* 突触绿 - 灰质层/成功/执行 */
+    --primary: 151 85% 41%;
+    --primary-foreground: 151 100% 97%;
+
+    /* 深灰次要 */
+    --secondary: 216 15% 17%;
+    --secondary-foreground: 210 25% 80%;
+
+    --muted: 216 15% 15%;
+    --muted-foreground: 215 12% 55%;
+
+    --accent: 216 15% 20%;
+    --accent-foreground: 210 25% 90%;
+
+    /* 状态色 */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --success: 151 85% 41%;
+    --warning: 38 95% 55%;
+    --info: 217 91% 60%;
+
+    --border: 216 14% 22%;
+    --input: 216 14% 22%;
+    --ring: 151 85% 41%;
+
+    /* 图表色 */
+    --chart-1: 151 85% 41%;
+    --chart-2: 217 91% 60%;
+    --chart-3: 270 68% 62%;
+    --chart-4: 38 95% 55%;
+    --chart-5: 0 72% 51%;
+
+    /* 侧边栏 */
+    --sidebar-background: 216 18% 9%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 151 85% 41%;
+    --sidebar-primary-foreground: 151 100% 97%;
+    --sidebar-accent: 216 15% 16%;
+    --sidebar-accent-foreground: 210 20% 90%;
+    --sidebar-border: 216 14% 18%;
+    --sidebar-ring: 151 85% 41%;
+
+    /* 教育色（保留兼容）*/
+    --education-blue: 217 91% 60%;
+    --education-green: 151 85% 41%;
+
+    /* 渐变 */
+    --gradient-primary: linear-gradient(135deg, hsl(151 85% 41%) 0%, hsl(217 91% 60%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(216 18% 13%) 0%, hsl(216 18% 11%) 100%);
+    --gradient-background: linear-gradient(180deg, hsl(216 18% 8%) 0%, hsl(216 20% 6%) 100%);
+
+    /* 阴影 */
+    --shadow-card: 0 1px 3px 0 hsl(216 18% 4% / 0.5), 0 0 0 1px hsl(216 14% 22%);
+    --shadow-hover: 0 4px 12px 0 hsl(151 85% 41% / 0.15), 0 0 0 1px hsl(151 85% 41% / 0.3);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-mono;
+    background: hsl(var(--background));
+  }
+
+  /* 滚动条 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+}
+
+@layer utilities {
+  /* ── 可点击卡片：hover 微上移 + 边框发光 ── */
+  .card-interactive {
+    @apply transition-all duration-200 cursor-pointer;
+  }
+  .card-interactive:hover {
+    @apply -translate-y-0.5;
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.4), 0 4px 16px hsl(var(--primary) / 0.12);
+  }
+
+  /* ── 按钮 active 按压态 ── */
+  .btn-press:active {
+    @apply scale-95;
+  }
+
+  /* ── 页面 section 标题竖线装饰 ── */
+  .section-title {
+    @apply relative pl-3 text-xs font-mono text-muted-foreground uppercase tracking-wider;
+  }
+  .section-title::before {
+    content: '';
+    @apply absolute left-0 top-0.5 bottom-0.5 w-0.5 bg-primary;
+  }
+
+  /* ── 页面大标题渐变下划线 ── */
+  .page-title {
+    @apply relative inline-block pb-2;
+  }
+  .page-title::after {
+    content: '';
+    @apply absolute bottom-0 left-0 h-px w-full;
+    background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0) 100%);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-primary);
+  }
+
+  .neural-grid {
+    background-image:
+      linear-gradient(hsl(216 14% 22% / 0.4) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(216 14% 22% / 0.4) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .glow-green {
+    box-shadow: 0 0 16px hsl(151 85% 41% / 0.25);
+  }
+
+  .glow-blue {
+    box-shadow: 0 0 16px hsl(217 91% 60% / 0.25);
+  }
+
+  .status-candidate { @apply text-yellow-400 bg-yellow-400/10 border-yellow-400/30; }
+  .status-temporary { @apply text-orange-400 bg-orange-400/10 border-orange-400/30; }
+  .status-sandbox { @apply text-blue-400 bg-blue-400/10 border-blue-400/30; }
+  .status-gray_matter { @apply text-primary bg-primary/10 border-primary/30; }
+  .status-mature { @apply text-emerald-400 bg-emerald-400/10 border-emerald-400/30; }
+  .status-universal { @apply text-purple-400 bg-purple-400/10 border-purple-400/30; }
+  .status-deprecated { @apply text-muted-foreground bg-muted/40 border-border; }
+
+  .risk-low { @apply text-primary bg-primary/10 border-primary/30; }
+  .risk-medium { @apply text-yellow-400 bg-yellow-400/10 border-yellow-400/30; }
+  .risk-high { @apply text-red-400 bg-red-400/10 border-red-400/30; }
+  .risk-forbidden { @apply text-red-600 bg-red-600/10 border-red-600/30; }
+
+  .task-pending { @apply text-muted-foreground bg-muted/40 border-border; }
+  .task-running { @apply text-blue-400 bg-blue-400/10 border-blue-400/30; }
+  .task-success { @apply text-primary bg-primary/10 border-primary/30; }
+  .task-failed { @apply text-red-400 bg-red-400/10 border-red-400/30; }
+
+  .episode-episode { @apply text-blue-400 bg-blue-400/10 border-blue-400/30; }
+  .episode-failure { @apply text-red-400 bg-red-400/10 border-red-400/30; }
+  .episode-success { @apply text-primary bg-primary/10 border-primary/30; }
+  .episode-parameter_patch { @apply text-purple-400 bg-purple-400/10 border-purple-400/30; }
+}
+
+/* 白质层打字机光标动画 */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* logo 呼吸光晕 */
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 12px hsl(151 85% 41% / 0.3), 0 0 0 1px hsl(151 85% 41% / 0.2); }
+  50%       { box-shadow: 0 0 28px hsl(151 85% 41% / 0.6), 0 0 0 1px hsl(151 85% 41% / 0.5); }
+}
+
+/* 神经粒子浮动 */
+@keyframes float-a {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.5; }
+  33%       { transform: translateY(-18px) translateX(10px); opacity: 0.9; }
+  66%       { transform: translateY(8px) translateX(-6px); opacity: 0.6; }
+}
+@keyframes float-b {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.4; }
+  40%       { transform: translateY(14px) translateX(-12px); opacity: 0.8; }
+  70%       { transform: translateY(-6px) translateX(8px); opacity: 0.5; }
+}
+@keyframes float-c {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.3; }
+  50%       { transform: translateY(-10px) translateX(16px); opacity: 0.7; }
+}
+
+/* 进度环描边动画 */
+@keyframes dash-fill {
+  from { stroke-dashoffset: 220; }
+}
+
