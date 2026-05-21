@@ -57,6 +57,7 @@ function TypingCursor() {
 // ---- 子组件：建议卡片 ----
 function SuggestionCard({ suggestion, idx }: { suggestion: WhiteMatterSuggestion; idx: number }) {
   const p = PRIORITY_MAP[suggestion.priority];
+  const evIndexes = (suggestion as unknown as Record<string, number[]>).evidence_step_indexes ?? [];
   return (
     <div className={`border ${p.border} p-3 space-y-1`}>
       <div className="flex items-center gap-2">
@@ -65,6 +66,14 @@ function SuggestionCard({ suggestion, idx }: { suggestion: WhiteMatterSuggestion
         <span className="text-xs font-mono text-foreground font-semibold flex-1 min-w-0">{suggestion.action}</span>
       </div>
       <p className="text-xs font-mono text-muted-foreground leading-relaxed pl-6">{suggestion.detail}</p>
+      {evIndexes.length > 0 && (
+        <div className="pl-6 flex items-center gap-1.5">
+          <span className="text-[10px] font-mono text-muted-foreground">证据步骤:</span>
+          {evIndexes.map((i) => (
+            <span key={i} className="text-[10px] font-mono px-1 border border-border bg-secondary/40">步骤{i + 1}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -108,6 +117,14 @@ function ParamPatchCard({
         </div>
       </div>
       <p className="text-xs font-mono text-muted-foreground pl-5">{patch.reason}</p>
+      {Array.isArray(patch.evidence_step_indexes) && patch.evidence_step_indexes.length > 0 && (
+        <div className="pl-5 flex items-center gap-1.5">
+          <span className="text-[10px] font-mono text-muted-foreground">证据步骤:</span>
+          {patch.evidence_step_indexes.map((i) => (
+            <span key={i} className="text-[10px] font-mono px-1 border border-border bg-secondary/40">步骤{i + 1}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -196,13 +213,24 @@ function AnalysisResult({
           </button>
           {showSteps && (
             <div className="border-t border-border p-3 space-y-2">
-              {analysis.affected_steps.map((s) => (
-                <div key={s.step_index} className="flex items-start gap-2">
-                  <span className="text-xs font-mono text-muted-foreground w-12 shrink-0">步骤{s.step_index + 1}</span>
-                  <code className="text-xs font-mono text-orange-400 shrink-0">[{s.action}]</code>
-                  <span className="text-xs font-mono text-muted-foreground">{s.description}</span>
-                </div>
-              ))}
+              {analysis.affected_steps.map((s) => {
+                // Milestone 10 向后兼容
+                const action = (s as unknown as Record<string,string>).action_type ?? (s as unknown as Record<string,string>).action ?? '';
+                const evidence = (s as unknown as Record<string,string>).evidence_summary ?? (s as unknown as Record<string,string>).description ?? '';
+                const status = (s as unknown as Record<string,string>).status;
+                const errorCode = (s as unknown as Record<string,string | null>).error_code;
+                return (
+                  <div key={s.step_index} className="flex flex-col gap-1">
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs font-mono text-muted-foreground w-12 shrink-0">步骤{s.step_index + 1}</span>
+                      <code className="text-xs font-mono text-orange-400 shrink-0">[{action}]</code>
+                      {status && <span className="text-xs font-mono text-muted-foreground">{status}</span>}
+                    </div>
+                    {errorCode && <span className="text-xs font-mono text-red-400 ml-14">{errorCode}</span>}
+                    <span className="text-xs font-mono text-muted-foreground ml-14">{evidence}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -124,16 +124,24 @@ export type FailureType =
   | 'permission_denied'
   | 'unknown';
 
+/** Milestone 10: 白质层分析基于 task_run_steps 的 Grounded Affected Step */
 export interface AffectedStep {
   step_index: number;
-  action: string;
-  description: string;
+  action_type: string;
+  target_selector: string | null;
+  status: string;
+  error_code: string | null;
+  error_message: string | null;
+  safety_risk_level: string | null;
+  evidence_summary: string;
 }
 
 export interface WhiteMatterSuggestion {
   priority: 'high' | 'medium' | 'low';
   action: string;
   detail: string;
+  /** Milestone 10: 每条建议必须附有证据步骤索引 */
+  evidence_step_indexes: number[];
 }
 
 /**
@@ -148,6 +156,8 @@ export interface ParamPatch {
   old_value: string;
   suggested_value: string;
   reason: string;
+  /** Milestone 10: 每条参数补丁必须附有证据步骤索引 */
+  evidence_step_indexes: number[];
   /** 仅在 memory_episodes(type=parameter_patch) 中存在，推理输出阶段为 undefined */
   applied_value?: string;
   /** 补丁实际落地 ISO 时间戳，仅 parameter_patch 类型 episode 携带 */
@@ -390,16 +400,20 @@ export interface PatchEvaluationResult {
 // ========== 环境画像 ==========
 export interface EnvironmentProfile {
   id: string;
-  target_url: string;
+  url: string;
   environment_type: string;
   perception_surfaces: string[];
   execution_surfaces: string[];
   feedback_surfaces: string[];
+  elements: any[];
   missing_capabilities: string[];
   recommended_adapters: string[];
+  scan_status: 'pending' | 'scanning' | 'success' | 'failed';
+  scan_error: string | null;
   raw_profile: Record<string, unknown>;
   user_id: string;
   created_at: string;
+  updated_at: string;
 }
 
 // ========== 模型配置（BYOK）==========

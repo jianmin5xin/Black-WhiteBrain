@@ -114,42 +114,63 @@ function buildSystemPrompt(): string {
   return `你是一个网页自动化智能体的"白质层"推理引擎，专门负责失败任务的根本原因分析（Root Cause Analysis）与优化建议生成。
 
 你的职责：
-1. 根据任务失败信息进行深度推理，找出根本原因
-2. 生成结构化的优化建议，帮助灰质层改进执行策略
+1. 根据 task_run_steps（步骤级执行轨迹）进行深度推理，找出根本原因
+2. 每个结论必须基于步骤级执行数据，确保所有输出都有可追溯的证据
 3. 推断需要调整的技能卡参数（参数补丁）
-4. 输出标准化 JSON 格式，供系统自动解析
+4. 输出标准化 JSON 格式，供系统自动解析与校验
 
-**输出规则（必须严格遵守）：**
-- 只输出一个 JSON 对象，不含任何 markdown 代码块符号（不加 \`\`\`json）
-- JSON 字段必须完整，不得缺省
+**Grounding 规则（必须严格遵守）：**
+- root_cause 中必须引用至少一个 failed_step 或异常 step 的 step_index（如"步骤3[fill] 因..."），不得只给出泛泛描述
+- affected_steps 列表中的每一个对象，必须对应 task_run_steps 中实际存在的一条记录，字段如下：
+  - step_index: 该步骤在 task_run_steps 中的索引号（整数，从0开始）
+  - action_type: 执行的操作类型（如 click、fill、submit 等）
+  - target_selector: 目标 DOM 选择器字符串（如无则为 null）
+  - status: 该步骤的执行结果（success | failed | skipped | running）
+  - error_code: 错误代码（如 ELEMENT_NOT_FOUND，如无则为 null）
+  - error_message: 错误信息原文，如存在则直接引用（无则为 null）
+  - safety_risk_level: 安全风险等级（low | medium | high | forbidden | null）
+  - evidence_summary: 一句话说明为什么该步骤被认定为受影响（必须引用真实数据）
+- suggestions 每条必须包含 evidence_step_indexes（整数数组），列出该建议所依据的受影响步骤索引，不得为空数组
 - suggestions 至少 2 条，最多 5 条
-- param_patches 可为空数组 []
+- param_patches 可为空数组 []，若不为空，每条必须包含 evidence_step_indexes（整数数组）和 reason
+- 置信度评分（confidence）规则：有明确的 failed_step 且附带 error_code 与详细 trace 的，可给 0.8~1.0；只有 task_run_steps 但无明确 failed_step（被外部中断或未知原因）的，只能给 0.5~0.7；无 task_run_steps 执行轨迹的必须给 0.0~0.3
 - confidence 为 0~1 的小数
 
 **JSON 结构如下（直接输出，不含代码块）：**
 {
-  "root_cause": "失败的根本原因，1-3句话简洁说明",
+  "root_cause": "步骤3[fill] 因选择器 #name 对应的元素未找到，导致...",
   "failure_type": "element_not_found | timeout | assertion_failed | navigation_error | permission_denied | unknown",
   "affected_steps": [
-    { "step_index": 0, "action": "步骤动作类型", "description": "该步骤失败的具体表现" }
+    {
+      "step_index": 2,
+      "action_type": "fill",
+      "target_selector": "#name",
+      "status": "failed",
+      "error_code": "ELEMENT_NOT_FOUND",
+      "error_message": "元素未找到: #name",
+      "safety_risk_level": "low",
+      "evidence_summary": "该步骤选择器 #name 在目标页面中不存在，与 error_code ELEMENT_NOT_FOUND 直接对应。"
+    }
   ],
   "suggestions": [
     {
-      "priority": "high | medium | low",
-      "action": "建议操作的一句话标题",
-      "detail": "2-3句话详细说明该建议的实施方式和预期效果"
+      "priority": "high",
+      "action": "修正元素选择器",
+      "detail": "将选择器从 #name 更新为更可靠的定位方式，如 data-testid=...",
+      "evidence_step_indexes": [2]
     }
   ],
   "param_patches": [
     {
-      "param_name": "参数名（如 wait_timeout_ms）",
-      "old_value": "当前值（修改前）",
+      "param_name": "参数名",
+      "old_value": "修改前",
       "suggested_value": "建议值",
-      "reason": "调整原因"
+      "reason": "调整原因",
+      "evidence_step_indexes": [2]
     }
   ],
   "confidence": 0.85,
-  "reasoning_summary": "3-5句话综合推理摘要，说明分析过程和最终判断"
+  "reasoning_summary": "3-5句话综合推理摘要"
 }`;
 }
 
@@ -179,7 +200,9 @@ function buildUserPrompt(payload: {
     )
     .join("\n");
 
-  return `请对以下失败的网页自动化任务进行根因分析：
+  const failedSteps = payload.steps_result.filter(r => r.status === 'failed' || r.safety_risk_level === 'high' || r.safety_risk_level === 'forbidden');
+
+  return `请对以下失败的网页自动化任务进行根因分析。
 
 **任务信息**
 - 任务名称: ${payload.task_name}
@@ -189,10 +212,19 @@ function buildUserPrompt(payload: {
 **配置的操作步骤**
 ${stepsDesc}
 
-**实际执行结果**
+**实际执行结果（来自 task_run_steps）**
 ${resultsDesc}
 
-请基于以上信息，作为白质层推理引擎，输出标准化 JSON 分析结果。`;
+**异常步骤摘要**
+${failedSteps.length === 0 ? '  无明确 failed 步骤，请重点检查 timeout、skipped 或其他异常标记。' : failedSteps.map(f => `  步骤${f.step_index + 1} [${f.action}]: ${f.error || '异常'} (风险: ${f.safety_risk_level || 'low'})`).join('\n')}
+
+**分析要求**
+1. root_cause 必须引用至少一个异常步骤（failed 或高风险）的 step_index。
+2. affected_steps 必须逐一列出每个受影响步骤的全部字段（step_index / action_type / target_selector / status / error_code / error_message / safety_risk_level / evidence_summary）。
+3. 每条 suggestion 的 evidence_step_indexes 不得为空，且每个索引必须对应 affected_steps 中的某一项。
+4. 不允许基于假设进行分析，所有推断必须基于上述执行结果中的实际数据。
+
+请直接输出标准化 JSON。`;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -253,6 +285,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .select("*")
       .eq("task_run_id", task_run_id)
       .order("step_index", { ascending: true });
+
+    // Milestone 10 需求 6: 如果 task_run_steps 为空，直接返回 INSUFFICIENT_TRACE_DATA
+    if (!stepTraces || stepTraces.length === 0) {
+      return new Response(JSON.stringify({ error: "INSUFFICIENT_TRACE_DATA" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const formattedStepsResult = (stepTraces || []).map((st) => ({
       step_index: st.step_index,
@@ -386,6 +426,73 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
           const analysis = JSON.parse(cleaned);
 
+          // Milestone 10: Grounding Integrity 校验
+          const failedIndexes = (stepTraces || [])
+            .filter((s: Record<string, unknown>) => s.status === 'failed' || s.safety_risk_level === 'high' || s.safety_risk_level === 'forbidden')
+            .map((s: Record<string, unknown>) => s.step_index as number);
+
+          const affectedSteps: Array<Record<string, unknown>> = analysis.affected_steps ?? [];
+          const suggestions: Array<Record<string, unknown>> = analysis.suggestions ?? [];
+
+          // 1. affected_steps 不能为空
+          if (affectedSteps.length === 0) {
+            throw new Error(`M10-Grounding: affected_steps 不能为空`);
+          }
+
+          // 2. 每个 affected_step 必须包含全部字段
+          const requiredStepFields = ['step_index', 'action_type', 'target_selector', 'status', 'error_code', 'error_message', 'safety_risk_level', 'evidence_summary'];
+          for (const step of affectedSteps) {
+            for (const field of requiredStepFields) {
+              if (!(field in step)) {
+                throw new Error(`M10-Grounding: affected_steps[缺少${field}]`);
+              }
+            }
+          }
+
+          // 3. root_cause 必须引用至少一个失败步骤的 step_index
+          const hasFailedRef = failedIndexes.some((idx: number) =>
+            (analysis.root_cause as string).includes(String(idx))
+          );
+          if (!hasFailedRef) {
+            throw new Error(`M10-Grounding: root_cause 未引用任何 failed_step 的 step_index`);
+          }
+
+          // 4. 每条 suggestion 必须包含非空的 evidence_step_indexes
+          for (const sug of suggestions) {
+            const ev = sug.evidence_step_indexes as number[] | undefined;
+            if (!Array.isArray(ev) || ev.length === 0) {
+              throw new Error(`M10-Grounding: suggestion["${sug.action}"] 缺少 evidence_step_indexes`);
+            }
+            // 确保索引对应 affected_steps
+            const validIndexes = affectedSteps.map((s: Record<string, unknown>) => s.step_index as number);
+            const allValid = ev.every((i: number) => validIndexes.includes(i));
+            if (!allValid) {
+              throw new Error(`M10-Grounding: suggestion evidence_step_indexes 含有无效 step_index`);
+            }
+          }
+
+          // 5. 每条 param_patch 必须包含 evidence_step_indexes 和 reason (Milestone 10 需求 5)
+          const paramPatches: Array<Record<string, unknown>> = analysis.param_patches ?? [];
+          for (const patch of paramPatches) {
+            if (!patch.reason) {
+              throw new Error(`M10-Grounding: param_patch["${patch.param_name}"] 缺少 reason`);
+            }
+            const ev = patch.evidence_step_indexes as number[] | undefined;
+            if (!Array.isArray(ev) || ev.length === 0) {
+              throw new Error(`M10-Grounding: param_patch["${patch.param_name}"] 缺少 evidence_step_indexes`);
+            }
+            const validIndexes = affectedSteps.map((s: Record<string, unknown>) => s.step_index as number);
+            const allValid = ev.every((i: number) => validIndexes.includes(i));
+            if (!allValid) {
+              throw new Error(`M10-Grounding: param_patch evidence_step_indexes 含有无效 step_index`);
+            }
+          }
+
+          // 提取所有涉及的 evidence_step_indexes（去重）
+          const allEvidenceIndexes = new Set<number>();
+          suggestions.forEach(s => (s.evidence_step_indexes as number[]).forEach(i => allEvidenceIndexes.add(i)));
+          paramPatches.forEach(p => (p.evidence_step_indexes as number[]).forEach(i => allEvidenceIndexes.add(i)));
+
           await supabaseService
             .from("task_runs")
             .update({ analysis, suggestions: analysis.suggestions ?? [] })
@@ -399,8 +506,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
               task_run_id,
               root_cause: analysis.root_cause,
               failure_type: analysis.failure_type,
-              affected_steps: analysis.affected_steps,
-              suggestions: analysis.suggestions,
+              // Milestone 10: 保存完整 affected_steps
+              affected_steps: affectedSteps,
+              // Milestone 10: 聚合证据步骤索引 (需求 8)
+              evidence_step_indexes: Array.from(allEvidenceIndexes),
+              // Milestone 10: 保存完整步骤层执行轨迹作为证据来源
+              raw_steps: stepTraces || [],
+              suggestions: suggestions,
               param_patches: analysis.param_patches,
               confidence: analysis.confidence,
               reasoning_summary: analysis.reasoning_summary,

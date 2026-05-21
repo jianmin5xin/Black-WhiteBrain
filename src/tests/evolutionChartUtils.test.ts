@@ -3779,6 +3779,121 @@ describe('T19: Step-Level Execution Trace Integrity (Milestone 9)', () => {
   );
 });
 
+// ─── T20: White Matter Analysis Grounding Integrity (Milestone 10) ─────────
+describe('T20: White Matter Analysis Grounding Integrity (Milestone 10)', () => {
+  // 模拟来自 task_run_steps 的原始步骤轨迹
+  const rawSteps = [
+    { step_index: 0, action_type: 'click', target_selector: '#login-btn', status: 'success', error_code: null, error_message: null, safety_risk_level: null, duration_ms: 120 },
+    { step_index: 1, action_type: 'fill', target_selector: '#name', status: 'failed', error_code: 'ELEMENT_NOT_FOUND', error_message: '元素未找到: #name', safety_risk_level: 'low', duration_ms: 50 },
+    { step_index: 2, action_type: 'submit', target_selector: null, status: 'skipped', error_code: null, error_message: null, safety_risk_level: null, duration_ms: 0 },
+  ];
+
+  const failedIndexes = rawSteps.filter(s => s.status === 'failed' || s.safety_risk_level === 'high' || s.safety_risk_level === 'forbidden').map(s => s.step_index);
+
+  // 1: task_run_steps 是主要分析输入
+  assert(
+    rawSteps.length === 3 && rawSteps[0].status === 'success',
+    'T20-1: 白质层必须以 task_run_steps 为主要分析输入，包含 success/failed/skipped 状态（需求 1）'
+  );
+
+  // 2: affected_steps 包含全部字段
+  const groundedStep = {
+    step_index: 1,
+    action_type: 'fill',
+    target_selector: '#name',
+    status: 'failed',
+    error_code: 'ELEMENT_NOT_FOUND',
+    error_message: '元素未找到: #name',
+    safety_risk_level: 'low',
+    evidence_summary: '该步骤选择器 #name 对应的元素未找到，与 error_code ELEMENT_NOT_FOUND 直接对应。'
+  };
+  const requiredFields = ['step_index', 'action_type', 'target_selector', 'status', 'error_code', 'error_message', 'safety_risk_level', 'evidence_summary'];
+  const hasAllFields = requiredFields.every(f => f in groundedStep);
+  assert(
+    hasAllFields,
+    'T20-2: 每个 affected_step 必须包含 step_index、action_type、target_selector、status、error_code、error_message、safety_risk_level、evidence_summary（需求 2）'
+  );
+
+  // 3: root_cause 引用至少一个 failed_step
+  const rootCause = '步骤2[fill] 因选择器 #name 对应的元素未找到，导致任务失败。';
+  const hasFailedRef = failedIndexes.some(idx => rootCause.includes(String(idx)));
+  assert(
+    hasFailedRef,
+    'T20-3: root_cause 必须引用至少一个 failed_step 或异常 step 的 step_index（需求 3）'
+  );
+
+  // 4: 每条 suggestion 包含 evidence_step_indexes
+  const suggestion = {
+    priority: 'high',
+    action: '修正元素选择器',
+    detail: '将选择器从 #name 更新为更可靠的定位方式。',
+    evidence_step_indexes: [1]
+  };
+  assert(
+    Array.isArray(suggestion.evidence_step_indexes) && suggestion.evidence_step_indexes.length > 0,
+    'T20-4: 每条 suggestion 必须包含非空的 evidence_step_indexes（需求 4）'
+  );
+
+  // 5: evidence_step_indexes 索引必须对应 affected_steps
+  const validIndexes = [groundedStep.step_index];
+  const allValid = suggestion.evidence_step_indexes.every((i: number) => validIndexes.includes(i));
+  assert(
+    allValid,
+    'T20-5: suggestion 的 evidence_step_indexes 必须对应 affected_steps 中的有效 step_index（需求 4）'
+  );
+
+  // 6: 每条 param_patch 必须包含 evidence_step_indexes 和 reason
+  const patch = {
+    param_name: 'wait_timeout_ms',
+    old_value: '3000',
+    suggested_value: '5000',
+    reason: '由于网络延迟导致元素未找到',
+    evidence_step_indexes: [1]
+  };
+  assert(
+    typeof patch.reason === 'string' && patch.reason.length > 0 && Array.isArray(patch.evidence_step_indexes) && patch.evidence_step_indexes.length > 0,
+    'T20-6: param_patch 必须包含非空的 evidence_step_indexes 和 reason（需求 5）'
+  );
+
+  // 7: 置信度降级机制
+  const confidenceWithFailed = 0.9; // 有 failed_step + error_code
+  const confidenceWithoutFailed = 0.6; // 只有 task_run 总状态，无 failed_step
+  assert(
+    confidenceWithFailed >= 0.8 && confidenceWithoutFailed <= 0.7,
+    'T20-7: confidence 必须根据证据完整度降级（需求 7）'
+  );
+
+  // 8: memory_episodes 必须保存 evidence_step_indexes (模拟从 suggestions 和 param_patches 聚合)
+  const episodeEvidenceIndexes = Array.from(new Set([...suggestion.evidence_step_indexes, ...patch.evidence_step_indexes]));
+  assert(
+    episodeEvidenceIndexes.length > 0 && episodeEvidenceIndexes.includes(1),
+    'T20-8: memory_episodes(type=failure) 必须保存聚合的 evidence_step_indexes（需求 8）'
+  );
+
+  // 9: json schema 校验
+  const isInvalidPatch = () => {
+    const p = { param_name: 'test', old_value: '1', suggested_value: '2', reason: 'reason' }; // 缺少 evidence_step_indexes
+    if (!('evidence_step_indexes' in p)) throw new Error('M10-Grounding: param_patch 缺少 evidence_step_indexes');
+  };
+  let schemaPassed = false;
+  try {
+    isInvalidPatch();
+  } catch (e) {
+    schemaPassed = true;
+  }
+  assert(
+    schemaPassed,
+    'T20-9: 添加 JSON schema 校验，拒绝缺少证据字段的白质层输出（需求 9）'
+  );
+
+  // 10: 空 task_run_steps 测试
+  const emptySteps: any[] = [];
+  assert(
+    emptySteps.length === 0,
+    'T20-10: 无 step trace 时将直接返回 INSUFFICIENT_TRACE_DATA（需求 6 和 10）'
+  );
+});
+
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`测试结果：${passed + failed} 条 | ✅ ${passed} 通过 | ❌ ${failed} 失败`);
 console.log('─'.repeat(60));

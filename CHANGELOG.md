@@ -3,6 +3,62 @@
 所有值得记录的变更按版本倒序排列，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 
 ---
+## [v48] — 2026-05-19 · Milestone 10: Bootstrapper 服务与目标环境扫描
+
+### 目标
+开启 Milestone 10 周期（Bootstrapper 服务初探），通过构建自动化探针解析目标页面，提取感知表面和执行面，使系统具备“阅读网页”的基础设施。
+
+### 变更内容
+- **Bootstrapper 边缘服务**：新增 `bootstrap-env` Edge Function，接入 `playwright-core` 建立基于 CDP 的动态浏览会话支持，传入目标 URL 后通过无头浏览器加载网页并等待 `networkidle` 状态。
+- **环境信息多维抓取**：
+  - **DOM 扫描分析**：识别页面内所有的可交互元素（包括 `button`、`input`、`textarea`、`select`、`a`、`form`、`dialog`、`modal`、`alert`）。
+  - **组件属性捕获**：提取交互组件的 `text`、`role`、`name`、`placeholder`、`type`、`href`、`aria-label`、`data-testid`。
+  - **评估引擎算法**：智能推导元素的 `stable_selector_score`（基于唯一标识强度评分），并推断 `action_candidates`（如 click、fill、submit），结合语义初步划定阻断动作和修改类动作的 `risk_level`（安全风险等级）。
+- **多面解析模型入库**：生成包含 DOM 结构、网页标题、可见纯文本、控制台报错及视觉截屏的 `perception_surfaces`（感知表面），以及结构化的 `execution_surfaces`（执行面），最终完成归档自动落入 `environment_profiles` 表。
+
+---
+
+## [v48] — 2026-05-19 · Milestone 11: Environment Bootstrapper Integrity
+
+### 目标
+完成网页自动化平台的自举层，让系统能够输入 URL 后自动扫描网页，发现感知面、执行面、反馈面，生成 environment_profile，并为后续任务执行、技能卡生成和白质层分析提供结构化环境画像（本期仅实现 DOM 扫描自举）。
+
+### 变更内容
+- **环境画像表重构**：执行迁移 `00031_environment_profiles_milestone11.sql`，将 `target_url` 更名为 `url`，新增 `elements`（DOM元素集合）、`scan_status`（pending/scanning/success/failed）、`scan_error` 等结构化字段，用于记录自举扫描的核心结果。
+- **环境扫描自举**：重构 `BootstrapPage` 的 `simulateBootstrap`，前端提交分析后即可生成包含真实可用 DOM 树信息的 Mock 环境数据并持久化到 `environment_profiles` 表。
+- **关联查询更新**：前端在请求时修正了对历史记录的请求指向，自 `environment_profiles` 取数据，不再走 `memory_episodes` 的回退逻辑。
+- **画像详情透出**：修改 `EpisodeDetail.tsx` 的 `EnvProfileDetail` 组件，透出扫描状态 (`scan_status`)、捕获的元素总量 (`elements.length`) 及其对应的失败错误等核心自举信息，同时确保对旧有 `target_url`数据的读取兼容性。
+- **结构化输出重构**：调整前端 Mock 以及 `bootstrap-env` Edge Function 的实现方式，明确划分出结构化的 `execution_surfaces`（包含 click、fill、select 等）、`feedback_surfaces`（包含 url_change、dom_change 等）、以及系统内建的 `recommended_adapters`（如 dom_reader、click_adapter 等）。
+- **高优选择器生成**：更新了提取算法中的选择器生成策略，提升 `data-testid` 和 `data-test` 属性的权重，保证优先基于测试锚点进行选择。
+
+---
+
+
+- **参数补丁完整性**：扩展 `ParamPatch` 类型结构和前端 UI (`WhiteMatterPanel`, `EpisodeDetail`)，新增并展示 `evidence_step_indexes` 与 `reason` 字段，确保每个参数修改都有事实依据。
+- **记忆片段升级**：在生成 `memory_episodes`（type='failure'）时，从推断的建议和补丁中聚合去重出所有使用过的 `evidence_step_indexes` 并存入 `content_json`。
+- **Grounding 拦截校验强化**：补充针对 `param_patches` 的检查，任何缺少 `evidence_step_indexes` 或 `reason` 的参数补丁将被作为校验失败拒绝写入数据库（模拟 JSON Schema 级别的一致性约束）。
+- **完整性测试补充**：在 `T20` 测试套件中补充了对应的 5 个断言，验证证据字段存在性、置信度分数阈值以及阻断机制有效性。
+
+---
+
+## [v48] — 2026-05-19 · Milestone 10: 白质层分析接地完整性 (Analysis Grounding Integrity)
+
+### 目标
+让白质层的每一项失败分析结论都有可追溯的证据来源，确保 root_cause、affected_steps、suggestions、param_patches 均基于真实的 task_run_steps 执行轨迹，禁止基于假设的空洞推论。
+
+### 变更内容
+- **系统提示词强化**：重构 `buildSystemPrompt`，明确要求 AI 输出的 `root_cause` 必须引用至少一个 failed_step 或异常 step 的 `step_index`；要求 `affected_steps` 每个条目必须包含完整字段（`step_index` / `action_type` / `target_selector` / `status` / `error_code` / `error_message` / `safety_risk_level` / `evidence_summary`）；要求每条 `suggestion` 必须附带非空的 `evidence_step_indexes` 数组。
+- **用户提示词增强**：在 `buildUserPrompt` 中增加**异常步骤摘要**，并列出三项强制性分析要求，确保模型严格基于输入数据而非假设进行推理。
+- **类型系统升级**：扩展 `AffectedStep` 接口，新增 `action_type`、`target_selector`、`status`、`error_code`、`error_message`、`safety_risk_level`、`evidence_summary` 等字段，并为 `WhiteMatterSuggestion` 新增 `evidence_step_indexes`。
+- **后端 Grounding 校验**：在 `white-matter-analyze` Edge Function 的 `flush` 阶段添加四重校验保护：
+  1. `affected_steps` 不能为空；
+  2. 每个 affected_step 必须包含全部 8 个字段；
+  3. `root_cause` 必须引用至少一个 failed_step 的 `step_index`；
+  4. 每条 `suggestion` 的 `evidence_step_indexes` 必须非空且索引有效。
+- **前端展示适配**：更新 `EpisodeDetail.tsx` 与 `WhiteMatterPanel.tsx`，以向后兼容方式展示新增的 `action_type`、`target_selector`、`status`、`error_code`、`safety_risk_level`、`evidence_summary`、`evidence_step_indexes` 字段。
+
+---
+
 ## [v47] — 2026-05-19 · 实现步骤级执行轨迹完整性与流式实时写入
 
 ### 目标

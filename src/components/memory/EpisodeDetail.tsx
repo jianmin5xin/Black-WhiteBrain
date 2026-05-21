@@ -141,13 +141,36 @@ function FailureDetail({ content }: { content: WhiteMatterEpisodeContent }) {
         <div className="space-y-1.5">
           <SectionTitle icon={Activity} count={content.affected_steps.length}>受影响步骤</SectionTitle>
           <div className="space-y-1.5">
-            {content.affected_steps.map((s: AffectedStep, i: number) => (
-              <div key={i} className="flex items-start gap-2 border border-border/60 bg-card/30 px-3 py-2">
-                <span className="text-xs font-mono text-muted-foreground shrink-0 w-6">#{s.step_index}</span>
-                <code className="text-xs font-mono text-yellow-400 shrink-0">{s.action}</code>
-                <span className="text-xs font-mono text-muted-foreground text-pretty">{s.description}</span>
-              </div>
-            ))}
+            {content.affected_steps.map((s: AffectedStep, i: number) => {
+              // Milestone 10 向后兼容
+              const action = (s as unknown as Record<string,string>).action_type ?? (s as unknown as Record<string,string>).action ?? '';
+              const evidence = (s as unknown as Record<string,string>).evidence_summary ?? (s as unknown as Record<string,string>).description ?? '';
+              const status = (s as unknown as Record<string,string>).status;
+              const errorCode = (s as unknown as Record<string,string | null>).error_code;
+              const errorMsg = (s as unknown as Record<string,string | null>).error_message;
+              const riskLevel = (s as unknown as Record<string,string | null>).safety_risk_level;
+              const selector = (s as unknown as Record<string,string | null>).target_selector;
+              return (
+                <div key={i} className="flex flex-col gap-1 border border-border/60 bg-card/30 px-3 py-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-mono text-muted-foreground shrink-0 w-6">#{s.step_index}</span>
+                    <code className="text-xs font-mono text-yellow-400 shrink-0">{action}</code>
+                    {status && <span className="text-xs font-mono text-muted-foreground">[{status}]</span>}
+                    {selector && <code className="text-xs font-mono text-muted-foreground truncate">{selector}</code>}
+                  </div>
+                  {errorCode && (
+                    <div className="flex gap-2 text-xs font-mono">
+                      <span className="text-red-400">{errorCode}</span>
+                      {errorMsg && <span className="text-muted-foreground">{errorMsg}</span>}
+                    </div>
+                  )}
+                  {riskLevel && riskLevel !== 'low' && (
+                    <span className="text-xs font-mono text-orange-400">风险等级: {riskLevel}</span>
+                  )}
+                  <span className="text-xs font-mono text-muted-foreground text-pretty">{evidence}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -168,6 +191,14 @@ function FailureDetail({ content }: { content: WhiteMatterEpisodeContent }) {
                     <span className="text-xs font-mono font-semibold text-foreground">{s.action}</span>
                   </div>
                   <p className="text-xs font-mono text-muted-foreground pl-0.5 text-pretty">{s.detail}</p>
+                  {Array.isArray((s as any).evidence_step_indexes) && ((s as any).evidence_step_indexes as number[]).length > 0 && (
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <span className="text-[10px] font-mono text-muted-foreground">证据步骤:</span>
+                      {((s as any).evidence_step_indexes as number[]).map((idx) => (
+                        <span key={idx} className="text-[10px] font-mono px-1 border border-border bg-secondary/40">#{idx}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -189,6 +220,14 @@ function FailureDetail({ content }: { content: WhiteMatterEpisodeContent }) {
                   <code className="text-xs font-mono text-primary bg-primary/10 px-1">{p.suggested_value}</code>
                 </div>
                 <p className="text-xs font-mono text-muted-foreground text-pretty">{p.reason}</p>
+                {Array.isArray(p.evidence_step_indexes) && p.evidence_step_indexes.length > 0 && (
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-mono text-muted-foreground">证据步骤:</span>
+                    {p.evidence_step_indexes.map((idx) => (
+                      <span key={idx} className="text-[10px] font-mono px-1 border border-border bg-secondary/40">#{idx}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -318,13 +357,17 @@ function SuccessTrajectory({ content }: { content: SuccessContent }) {
 // 3. 环境能力画像（episode + tags 含 env_profile）
 // ══════════════════════════════════════════════════════════
 interface EnvProfileContent {
-  target_url?: string;
+  url?: string;
+  target_url?: string; // 兼容旧数据
   environment_type?: string;
   perception_surfaces?: string[];
   execution_surfaces?: string[];
   feedback_surfaces?: string[];
   missing_capabilities?: string[];
   recommended_adapters?: string[];
+  scan_status?: string;
+  scan_error?: string | null;
+  elements?: any[];
 }
 
 function EnvProfileDetail({ content }: { content: EnvProfileContent }) {
@@ -338,16 +381,34 @@ function EnvProfileDetail({ content }: { content: EnvProfileContent }) {
     <div className="space-y-4">
       {/* URL + 环境类型 */}
       <div className="grid grid-cols-2 gap-2">
-        {content.target_url && (
+        {(content.url || content.target_url) && (
           <div className="border border-border bg-card/50 p-2.5 col-span-2">
             <p className="text-xs font-mono text-muted-foreground mb-0.5">目标 URL</p>
-            <p className="text-xs font-mono text-foreground break-words">{content.target_url}</p>
+            <p className="text-xs font-mono text-foreground break-words">{content.url || content.target_url}</p>
           </div>
         )}
         {content.environment_type && (
           <div className="border border-border bg-card/50 p-2.5">
             <p className="text-xs font-mono text-muted-foreground mb-0.5">环境类型</p>
             <p className="text-xs font-mono text-foreground font-bold">{content.environment_type}</p>
+          </div>
+        )}
+        {content.scan_status && (
+          <div className="border border-border bg-card/50 p-2.5">
+            <p className="text-xs font-mono text-muted-foreground mb-0.5">扫描状态</p>
+            <p className="text-xs font-mono text-foreground capitalize">{content.scan_status}</p>
+          </div>
+        )}
+        {content.elements !== undefined && (
+          <div className="border border-border bg-card/50 p-2.5">
+            <p className="text-xs font-mono text-muted-foreground mb-0.5">DOM 元素数</p>
+            <p className="text-xs font-mono text-foreground">{content.elements.length}</p>
+          </div>
+        )}
+        {content.scan_error && (
+          <div className="border border-border bg-card/50 p-2.5 col-span-2">
+            <p className="text-xs font-mono text-muted-foreground mb-0.5">扫描错误</p>
+            <p className="text-xs font-mono text-red-400 break-words">{content.scan_error}</p>
           </div>
         )}
       </div>
@@ -448,6 +509,14 @@ function ParamPatchDetail({ content }: { content: ParamPatchContent }) {
                   <code className="text-xs font-mono text-primary bg-primary/10 px-1">{p.suggested_value}</code>
                 </div>
                 <p className="text-xs font-mono text-muted-foreground text-pretty">{p.reason}</p>
+                {Array.isArray(p.evidence_step_indexes) && p.evidence_step_indexes.length > 0 && (
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-mono text-muted-foreground">证据步骤:</span>
+                    {p.evidence_step_indexes.map((idx) => (
+                      <span key={idx} className="text-[10px] font-mono px-1 border border-border bg-secondary/40">#{idx}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

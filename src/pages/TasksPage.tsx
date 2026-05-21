@@ -509,7 +509,7 @@ export default function TasksPage() {
       name: `${newName.trim()} - 候选技能卡`,
       environment_type: 'web_automation',
       perception_sources: ['dom_elements', 'page_state', 'form_fields'],
-      execution_surfaces: ['click', 'fill', 'navigate', 'screenshot'],
+      execution_surfaces: ['click', 'fill', 'select', 'wait', 'screenshot', 'press_key', 'navigate'],
       feedback_surfaces: ['page_redirect', 'element_change', 'dialog_popup'],
       tunable_params: { detection_threshold: 0.62, reaction_delay_ms: 100, retry_count: 3, timeout_ms: 5000, confidence_min: 0.7 },
       safety: { risk_level: 'low', fallback_action: 'stop', max_action_rate_per_second: 5 },

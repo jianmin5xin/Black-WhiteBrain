@@ -13,17 +13,35 @@ import {
   History, Trash2, ChevronDown, ChevronUp, Globe, Clock, Layers,
 } from 'lucide-react';
 
-function simulateBootstrap(url: string): EnvironmentProfile {
-  const domain = new URL(url.startsWith('http') ? url : 'https://' + url).hostname;
+function simulateBootstrap(url: string, userId: string): EnvironmentProfile {
+  let domain = url;
+  try {
+    domain = new URL(url.startsWith('http') ? url : 'https://' + url).hostname;
+  } catch (e) {
+    // 忽略无效 URL 格式导致的解析错误，此时直接使用原字符串
+  }
+
+  // 模拟从 DOM 中扫描出的交互元素
+  const mockElements = [
+    { type: 'input', selector: '[data-testid="username-input"]', role: 'textbox', attributes: { type: 'text', placeholder: 'Username' } },
+    { type: 'input', selector: '[data-testid="password-input"]', role: 'textbox', attributes: { type: 'password', placeholder: 'Password' } },
+    { type: 'button', selector: '[data-testid="login-button"]', role: 'button', text: 'Login' },
+    { type: 'a', selector: '[data-test="forgot-password"]', role: 'link', text: 'Forgot Password?' },
+    { type: 'select', selector: '#language-select', role: 'combobox', options: ['en', 'zh', 'ja'] }
+  ];
+
   return {
     id: crypto.randomUUID(),
-    target_url: url,
+    url,
     environment_type: 'web_automation',
     perception_surfaces: ['dom_elements', 'page_title', 'form_fields', 'button_labels', 'link_texts', 'image_alts', 'aria_labels'],
-    execution_surfaces: ['click', 'fill_input', 'select_option', 'submit_form', 'scroll', 'navigate', 'screenshot'],
-    feedback_surfaces: ['page_url_change', 'dom_mutation', 'dialog_open', 'network_request', 'console_log', 'element_visibility'],
+    execution_surfaces: ['click', 'fill', 'select', 'wait', 'screenshot', 'press_key', 'navigate'],
+    feedback_surfaces: ['url_change', 'dom_change', 'element_visible', 'element_hidden', 'validation_error', 'toast_or_alert', 'network_idle'],
+    elements: mockElements,
+    scan_status: 'success',
+    scan_error: null,
     missing_capabilities: ['visual_recognition', 'captcha_solving', 'file_upload'],
-    recommended_adapters: ['form_filler', 'dialog_handler', 'navigation_tracker', 'dom_observer'],
+    recommended_adapters: ['dom_reader', 'click_adapter', 'fill_adapter', 'select_adapter', 'wait_adapter', 'screenshot_adapter', 'feedback_observer'],
     raw_profile: {
       domain,
       detected_frameworks: ['React', 'Vue'],
@@ -34,9 +52,10 @@ function simulateBootstrap(url: string): EnvironmentProfile {
       has_authentication: true,
       scan_duration_ms: Math.floor(Math.random() * 800) + 200,
     },
-    user_id: '',
+    user_id: userId,
     created_at: new Date().toISOString(),
-  };
+    updated_at: new Date().toISOString(),
+  } as import('@/types/types').EnvironmentProfile;
 }
 
 const SURFACE_DEFS = [
@@ -86,8 +105,8 @@ function ProfileHistoryRow({
 }) {
   const raw = profile.raw_profile as Record<string, unknown>;
   const domain = (() => {
-    try { return new URL(profile.target_url.startsWith('http') ? profile.target_url : 'https://' + profile.target_url).hostname; }
-    catch { return profile.target_url; }
+    try { return new URL(profile.url.startsWith('http') ? profile.url : 'https://' + profile.url).hostname; }
+    catch { return profile.url; }
   })();
 
   return (
@@ -100,7 +119,7 @@ function ProfileHistoryRow({
         <Globe className="w-4 h-4 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-mono font-semibold text-foreground truncate">{domain}</p>
-          <p className="text-xs font-mono text-muted-foreground truncate">{profile.target_url}</p>
+          <p className="text-xs font-mono text-muted-foreground truncate">{profile.url}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <div className="hidden md:flex items-center gap-3">
@@ -198,7 +217,7 @@ export default function BootstrapPage() {
     if (!historySearch) return profiles;
     const s = historySearch.toLowerCase();
     return profiles.filter(p =>
-      p.target_url.toLowerCase().includes(s) ||
+      p.url.toLowerCase().includes(s) ||
       p.environment_type.toLowerCase().includes(s),
     );
   }, [profiles, historySearch]);
@@ -211,7 +230,7 @@ export default function BootstrapPage() {
     setResult(null);
     await new Promise(r => setTimeout(r, 1500));
     try {
-      const profile = simulateBootstrap(url.trim());
+      const profile = simulateBootstrap(url.trim(), user?.id || '');
       setResult(profile);
       toast.success('环境扫描完成，能力画像已生成');
     } catch {
@@ -228,13 +247,9 @@ export default function BootstrapPage() {
       user_id: user.id,
     });
     if (error) { toast.error('保存失败: ' + error.message); return; }
-    await supabase.from('memory_episodes').insert({
-      type: 'episode',
-      title: `环境扫描: ${result.target_url}`,
-      content_json: result as unknown as Record<string, unknown>,
-      tags: ['environment_profile', 'bootstrap'],
-      user_id: user.id,
-    });
+    await supabase.from('environment_profiles').insert(result);
+    toast.success('画像已保存至历史记录');
+    fetchHistory();
     setSaved(true);
     toast.success('环境画像已保存至记忆库');
     fetchHistory();
@@ -380,7 +395,7 @@ export default function BootstrapPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {[
                       { label: '环境类型', value: result.environment_type },
-                      { label: '目标域名', value: (() => { try { return new URL(result.target_url.startsWith('http') ? result.target_url : 'https://' + result.target_url).hostname; } catch { return result.target_url; } })() },
+                      { label: '目标域名', value: (() => { try { return new URL(result.url.startsWith('http') ? result.url : 'https://' + result.url).hostname; } catch { return result.url; } })() },
                       { label: '扫描耗时', value: `${(result.raw_profile as Record<string, unknown>)?.scan_duration_ms ?? 0}ms` },
                       { label: '缺失能力', value: `${result.missing_capabilities.length}项` },
                     ].map(({ label, value }) => (
@@ -434,7 +449,7 @@ export default function BootstrapPage() {
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { label: '已保存画像', value: profiles.length },
-                  { label: '不同域名', value: new Set(profiles.map(p => { try { return new URL(p.target_url.startsWith('http') ? p.target_url : 'https://' + p.target_url).hostname; } catch { return p.target_url; } })).size },
+                  { label: '不同域名', value: new Set(profiles.map(p => { try { return new URL(p.url.startsWith('http') ? p.url : 'https://' + p.url).hostname; } catch { return p.url; } })).size },
                   { label: '平均适配器', value: profiles.length > 0 ? Math.round(profiles.reduce((a, p) => a + p.recommended_adapters.length, 0) / profiles.length) : 0 },
                 ].map(({ label, value }) => (
                   <div key={label} className="p-3 border border-border text-center">
