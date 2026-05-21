@@ -256,7 +256,7 @@ Deno.serve(async (req: Request) => {
     const { data: profile, error: insertError } = await supabaseService.from('environment_profiles').insert({
       target_url: target_url,
       environment_type: 'web_automation',
-      perception_surfaces: ['dom_elements', 'page_title', 'form_fields', 'button_labels', 'link_texts', 'image_alts', 'aria_labels'],
+      perception_surfaces: ['dom', 'url', 'title', 'visible_text', 'screenshot', 'console_errors'],
       execution_surfaces: ['click', 'fill', 'select', 'wait', 'screenshot', 'press_key', 'navigate'],
       feedback_surfaces: ['url_change', 'dom_change', 'element_visible', 'element_hidden', 'validation_error', 'toast_or_alert', 'network_idle'],
       recommended_adapters: ['dom_reader', 'click_adapter', 'fill_adapter', 'select_adapter', 'wait_adapter', 'screenshot_adapter', 'feedback_observer'],

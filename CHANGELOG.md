@@ -3,6 +3,20 @@
 所有值得记录的变更按版本倒序排列，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 
 ---
+## [v49] — 2026-05-19 · Milestone 11: 基于 Playwright 的全景扫描与动态探测自举
+
+### 目标
+进一步深化环境自举（Bootstrapper）的功能，利用真实无头浏览器挂载自动化探针执行页面深度扫描；精确抽离、分类感知信息和动作集合，完整对齐 Milestone 11 的自举规范及要求。
+
+### 变更内容
+- **Playwright 深度解析**：边缘函数 `bootstrap-env` 现已支持利用 CDP 连接至真实的 Browserless 环境并运行 Playwright 会话。加载时等待 `networkidle` 以确保最终生成的 `dom` 和 `screenshot` 反映页面最新动态。
+- **元素精准探查**：扫描逻辑现支持识别 `button, input, textarea, select, a, form, dialog, modal, alert` 节点，并且对它们进行详细属性（`text`, `role`, `name`, `placeholder`, `type`, `href`, `aria-label`, `data-testid`）的捕获与收集。
+- **选择器评分与生成**：在自动生成的备选 Selector 中，对 `data-testid` 和 `data-test` 属性施加最高优先级，并为推导出的选择器打上基础的可信度得分 `stable_selector_score`。
+- **执行行为与风险预测**：通过对标签和动作的特征识别，动态推断该元素的 `action_candidates`，并根据元素上下文（如存在 Delete、Checkout 等关键字）预测阻断类 `risk_level`，以降低安全事故发生的几率。
+- **画像领域结构化**：在入库时，严格区分与构造了 `perception_surfaces`（dom, url, title 等感知视角）、`execution_surfaces`（click, fill, select 等）、以及反馈面与推荐适配器面，确保画像表结果百分百对齐自举协议规范。
+
+---
+
 ## [v48] — 2026-05-19 · Milestone 10: Bootstrapper 服务与目标环境扫描
 
 ### 目标

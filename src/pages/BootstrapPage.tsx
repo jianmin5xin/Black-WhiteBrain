@@ -34,7 +34,7 @@ function simulateBootstrap(url: string, userId: string): EnvironmentProfile {
     id: crypto.randomUUID(),
     url,
     environment_type: 'web_automation',
-    perception_surfaces: ['dom_elements', 'page_title', 'form_fields', 'button_labels', 'link_texts', 'image_alts', 'aria_labels'],
+    perception_surfaces: ['dom', 'url', 'title', 'visible_text', 'screenshot', 'console_errors'],
     execution_surfaces: ['click', 'fill', 'select', 'wait', 'screenshot', 'press_key', 'navigate'],
     feedback_surfaces: ['url_change', 'dom_change', 'element_visible', 'element_hidden', 'validation_error', 'toast_or_alert', 'network_idle'],
     elements: mockElements,

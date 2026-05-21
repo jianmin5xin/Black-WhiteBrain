@@ -344,7 +344,7 @@ export default function SkillsPage() {
   const [newName, setNewName] = useState('');
   const [newSkillId, setNewSkillId] = useState('');
   const [newEnvType, setNewEnvType] = useState('web_automation');
-  const [newPerceptions, setNewPerceptions] = useState('dom_elements, page_state, form_fields');
+  const [newPerceptions, setNewPerceptions] = useState('dom, url, title, visible_text, screenshot, console_errors');
   const [newExecutions, setNewExecutions] = useState('click, fill, navigate, screenshot');
   const [newFeedbacks, setNewFeedbacks] = useState('page_redirect, element_change, dialog_popup');
 
