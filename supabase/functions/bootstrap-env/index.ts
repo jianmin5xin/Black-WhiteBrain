@@ -6,146 +6,86 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-export interface ExtractResult {
-  perception_surfaces: {
-    url: string;
-    title: string;
-    dom: string;
-    visible_text: string;
-    screenshot: string | null;
-    console_errors: string[];
-  };
-  execution_surfaces: Array<{
-    type: string;
-    target_selector: string;
-    action_candidates: string[];
-    risk_level: string;
-    stable_selector_score: number;
-    element_info: Record<string, string | null>;
-  }>;
+/**
+ * 最小 Bootloader — 只负责采集事实，不负责复杂推理
+ * 
+ * 输入: target_url
+ * 输出: RawEnvironmentScan 存入 raw_environment_scans 表
+ * 
+ * 不生成：selector、risk_level、surfaces、adapters 等任何推理字段
+ */
+
+interface RawElement {
+  tag: string;
+  text: string | null;
+  role: string | null;
+  name: string | null;
+  placeholder: string | null;
+  type: string | null;
+  href: string | null;
+  "aria-label": string | null;
+  "data-testid": string | null;
+  "data-test": string | null;
+  "data-cy": string | null;
+  id: string | null;
+  class: string | null;
+  title: string | null;
+  // 元素在页面中的位置（用于后续编排与排序）
+  rect: { x: number; y: number; width: number; height: number };
 }
 
-// 这是将注入到页面内的脚本，用于 DOM 扫描、信息提取、Selector 生成及打分
-function extractDomInfo() {
-  const elements = Array.from(document.querySelectorAll('button, input, textarea, select, a, form, dialog, [role="dialog"], [role="alert"], .modal, .alert'));
-  
-  const results: any[] = [];
-  
-  function getElementSelector(el: Element): string {
-    // 1. data-testid / data-test / data-cy
-    if (el.getAttribute('data-testid')) return `[data-testid="${el.getAttribute('data-testid')}"]`;
-    if (el.getAttribute('data-test')) return `[data-test="${el.getAttribute('data-test')}"]`;
-    if (el.getAttribute('data-cy')) return `[data-cy="${el.getAttribute('data-cy')}"]`;
-    
-    // 2. aria-label
-    if (el.getAttribute('aria-label')) return `[aria-label="${el.getAttribute('aria-label')}"]`;
-    
-    // 3. role + accessible name
-    const role = el.getAttribute('role');
-    const title = el.getAttribute('title');
-    if (role && title) return `[role="${role}"][title="${title}"]`;
-    
-    // 4. label 对应 input
-    if (el.id) {
-      const label = document.querySelector(`label[for="${el.id}"]`);
-      if (label && label.textContent) {
-        return `text="${label.textContent.trim()}"`; // 借用 Playwright text 引擎
-      }
-    }
-    
-    // 5. id
-    if (el.id) return `#${el.id}`;
-    
-    // 6. name
-    if (el.getAttribute('name')) return `${el.tagName.toLowerCase()}[name="${el.getAttribute('name')}"]`;
-    
-    // 7. placeholder
-    if (el.getAttribute('placeholder')) return `[placeholder="${el.getAttribute('placeholder')}"]`;
-    
-    // 8. text
-    const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 50) return `text="${text}"`;
-    
-    // 9. CSS fallback
-    const classes = Array.from(el.classList).filter(c => !c.includes('hover') && !c.includes('active')).join('.');
-    if (classes) return `${el.tagName.toLowerCase()}.${classes}`;
-    
-    // 10. XPath fallback
-    return `//${el.tagName.toLowerCase()}`;
-  }
+interface RawScanResult {
+  url: string;
+  title: string;
+  dom: string;
+  visible_text: string;
+  screenshot: string | null;
+  console_errors: string[];
+  raw_elements: RawElement[];
+  scan_duration_ms: number;
+}
 
-  function calculateStableScore(el: Element): number {
-    let score = 50; // 基础分
-    if (el.getAttribute('data-testid') || el.getAttribute('data-test')) score += 50;
-    if (el.id) score += 40;
-    if (el.getAttribute('name')) score += 30;
-    if (el.getAttribute('aria-label')) score += 20;
-    
-    const classes = el.getAttribute('class') || '';
-    // 如果类名看起来像 hash 生成的（例如 css-1234abcd），扣分
-    if (/[a-zA-Z0-9]{6,}/.test(classes) && classes.includes('-')) score -= 20;
-    
-    return Math.min(Math.max(score, 0), 100);
-  }
+/**
+ * 注入页面的最小扫描脚本 — 只采集原始属性
+ */
+function extractRawElements() {
+  const targetSelectors = 'button, input, textarea, select, a, form, dialog, [role="dialog"], [role="alert"], .modal, .alert';
+  const elements = Array.from(document.querySelectorAll(targetSelectors));
 
-  function inferRiskLevel(el: Element): string {
-    const text = (el.textContent || el.getAttribute('value') || el.getAttribute('aria-label') || '').toLowerCase();
-    
-    // high 或 forbidden
-    const isHighRisk = /(delete|remove|pay|purchase|transfer|authorize|修改密码|删除|支付|购买|转账|授权)/.test(text);
-    if (isHighRisk) return 'high';
-    
-    // medium
-    const isMediumRisk = /(submit|login|send|save|update|confirm|apply|登录|发送|提交|保存|更新|确认)/.test(text);
-    if (isMediumRisk) return 'medium';
-    
-    // low (默认)
-    return 'low';
-  }
-
-  function inferActionCandidates(el: Element): string[] {
-    const tag = el.tagName.toLowerCase();
-    const type = el.getAttribute('type');
-    
-    if (tag === 'button' || tag === 'a') return ['click', 'hover'];
-    if (tag === 'input' && type !== 'submit' && type !== 'button') return ['fill', 'click', 'focus', 'clear'];
-    if (tag === 'textarea') return ['fill', 'click', 'focus', 'clear'];
-    if (tag === 'select') return ['select', 'click', 'focus'];
-    if (tag === 'form') return ['submit'];
-    
-    return ['click'];
-  }
+  const results: RawElement[] = [];
 
   for (const el of elements) {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) continue; // 忽略不可见元素
 
-    const info = {
-      tag: el.tagName.toLowerCase(),
-      text: (el.textContent || '').trim().slice(0, 100),
-      role: el.getAttribute('role'),
-      name: el.getAttribute('name'),
-      placeholder: el.getAttribute('placeholder'),
-      type: el.getAttribute('type'),
-      href: el.getAttribute('href'),
-      'aria-label': el.getAttribute('aria-label'),
-      'data-testid': el.getAttribute('data-testid')
-    };
-
     results.push({
-      target_selector: getElementSelector(el),
-      stable_selector_score: calculateStableScore(el),
-      action_candidates: inferActionCandidates(el),
-      risk_level: inferRiskLevel(el),
-      element_info: info,
-      type: inferActionCandidates(el)[0] || 'click' // 默认为最可能的候选动作
+      tag: el.tagName.toLowerCase(),
+      text: (el.textContent || '').trim().slice(0, 200) || null,
+      role: el.getAttribute('role') || null,
+      name: el.getAttribute('name') || null,
+      placeholder: el.getAttribute('placeholder') || null,
+      type: el.getAttribute('type') || null,
+      href: el.getAttribute('href') || null,
+      "aria-label": el.getAttribute('aria-label') || null,
+      "data-testid": el.getAttribute('data-testid') || null,
+      "data-test": el.getAttribute('data-test') || null,
+      "data-cy": el.getAttribute('data-cy') || null,
+      id: el.id || null,
+      class: el.getAttribute('class') || null,
+      title: el.getAttribute('title') || null,
+      rect: {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
     });
   }
-  
+
   return {
-    dom: document.documentElement.outerHTML.slice(0, 50000), // 截断防止 payload 过大
+    dom: document.documentElement.outerHTML.slice(0, 50000),
     visible_text: document.body.innerText.slice(0, 10000),
-    execution_surfaces: results
+    raw_elements: results,
   };
 }
 
@@ -157,6 +97,8 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
+
+  const startTime = Date.now();
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -189,132 +131,109 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    console.log(`Bootstrapping env for URL: ${target_url}`);
+    console.log(`[Bootloader] Scanning URL: ${target_url}`);
 
-    let result: ExtractResult;
-
-    // 获取 Browserless Token 或尝试本地 fallback（Deno Deploy 一般无法运行真实的本地 chromium）
+    let rawScan: RawScanResult;
     const browserlessToken = Deno.env.get("BROWSERLESS_API_KEY");
-    
+
     if (browserlessToken) {
-      console.log("Using Browserless CDP connection...");
+      console.log("[Bootloader] Using Browserless CDP...");
       const browser = await chromium.connectOverCDP(`wss://chrome.browserless.io?token=${browserlessToken}`);
       const page = await browser.newPage();
-      
+
       const consoleErrors: string[] = [];
       page.on('console', msg => {
-        if (msg.type() === 'error') {
-          consoleErrors.push(msg.text());
-        }
+        if (msg.type() === 'error') consoleErrors.push(msg.text());
       });
-      page.on('pageerror', err => {
-        consoleErrors.push(err.message);
-      });
+      page.on('pageerror', err => consoleErrors.push(err.message));
 
-      // 使用合理的超时和 networkidle
       await page.goto(target_url, { waitUntil: 'networkidle', timeout: 30000 }).catch(e => {
-        console.warn(`Timeout or error during goto: ${e.message}`);
+        console.warn(`[Bootloader] goto warning: ${e.message}`);
       });
 
       const title = await page.title();
-      
-      // 截屏 (较小尺寸和压缩率以防载荷过大)
       const screenshotBuffer = await page.screenshot({ type: 'jpeg', quality: 50 });
       const screenshotBase64 = `data:image/jpeg;base64,${screenshotBuffer.toString('base64')}`;
 
-      // 在页面内执行解析脚本
-      const extracted = await page.evaluate(extractDomInfo);
-      
+      const extracted = await page.evaluate(extractRawElements);
       await browser.close();
 
-      result = {
-        perception_surfaces: {
-          url: target_url,
-          title,
-          dom: extracted.dom,
-          visible_text: extracted.visible_text,
-          screenshot: screenshotBase64,
-          console_errors: consoleErrors
-        },
-        execution_surfaces: extracted.execution_surfaces
+      rawScan = {
+        url: target_url,
+        title,
+        dom: extracted.dom,
+        visible_text: extracted.visible_text,
+        screenshot: screenshotBase64,
+        console_errors: consoleErrors,
+        raw_elements: extracted.raw_elements,
+        scan_duration_ms: Date.now() - startTime,
       };
     } else {
-      // 模拟退级方案（当缺少 browserless 凭证时的简单请求方案）
-      // 这虽然不包含 playwright 的完全动态能力，但在无凭证的测试中起退级作用
-      console.log("Browserless token not found, using simple fetch fallback...");
+      // Fallback: 简单 fetch 模式（无浏览器环境）
+      console.log("[Bootloader] Browserless token not found, using fetch fallback...");
       const res = await fetch(target_url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
       });
       const html = await res.text();
-      
-      // 模拟一些简单的信息
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1] : target_url;
-      
-      // 使用正则表达式简单提取一些按钮和链接作演示
-      const execution_surfaces = [];
-      const btnRegex = /<button[^>]*>([^<]*)<\/button>/gi;
-      let match;
-      while ((match = btnRegex.exec(html)) !== null) {
-        if (execution_surfaces.length >= 20) break;
-        execution_surfaces.push({
-          type: "click",
-          target_selector: "button",
-          action_candidates: ["click"],
-          risk_level: "low",
-          stable_selector_score: 50,
-          element_info: { role: "button", text: match[1].slice(0, 50).trim() }
-        });
-      }
 
-      result = {
-        perception_surfaces: {
-          url: target_url,
-          title,
-          dom: html.slice(0, 50000),
-          visible_text: html.replace(/<[^>]+>/g, ' ').slice(0, 10000),
-          screenshot: null,
-          console_errors: []
-        },
-        execution_surfaces
+      rawScan = {
+        url: target_url,
+        title: titleMatch ? titleMatch[1] : target_url,
+        dom: html.slice(0, 50000),
+        visible_text: html.replace(/<[^>]+>/g, ' ').slice(0, 10000),
+        screenshot: null,
+        console_errors: [],
+        raw_elements: [], // fallback 无法获取真实 DOM 元素
+        scan_duration_ms: Date.now() - startTime,
       };
     }
 
-    // 存入 environment_profiles
+    // 存入 raw_environment_scans
     const supabaseService = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { data: profile, error: insertError } = await supabaseService.from('environment_profiles').insert({
-      target_url: target_url,
-      environment_type: 'web_automation',
-      perception_surfaces: ['dom', 'url', 'title', 'visible_text', 'screenshot', 'console_errors'],
-      execution_surfaces: ['click', 'fill', 'select', 'wait', 'screenshot', 'press_key', 'navigate'],
-      feedback_surfaces: ['url_change', 'dom_change', 'element_visible', 'element_hidden', 'validation_error', 'toast_or_alert', 'network_idle'],
-      recommended_adapters: ['dom_reader', 'click_adapter', 'fill_adapter', 'select_adapter', 'wait_adapter', 'screenshot_adapter', 'feedback_observer'],
-      missing_capabilities: ['visual_recognition', 'captcha_solving', 'file_upload'],
-      raw_profile: result,
-      user_id: user.id
-    }).select().maybeSingle();
+    const { data: scanRecord, error: insertError } = await supabaseService
+      .from('raw_environment_scans')
+      .insert({
+        url: rawScan.url,
+        title: rawScan.title,
+        dom: rawScan.dom,
+        visible_text: rawScan.visible_text,
+        screenshot: rawScan.screenshot,
+        console_errors: rawScan.console_errors,
+        raw_elements: rawScan.raw_elements,
+        scan_status: 'success',
+        scan_duration_ms: rawScan.scan_duration_ms,
+        user_id: user.id,
+      })
+      .select()
+      .maybeSingle();
 
     if (insertError) {
-      console.error("Insert error:", insertError);
+      console.error("[Bootloader] Insert error:", insertError);
       return new Response(JSON.stringify({ error: insertError.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(JSON.stringify({ data: profile }), {
+    return new Response(JSON.stringify({
+      data: {
+        raw_scan_id: scanRecord.id,
+        ...rawScan,
+      },
+    }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error) {
-    console.error("Bootstrap error:", error);
+    console.error("[Bootloader] Error:", error);
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

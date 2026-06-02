@@ -3,7 +3,7 @@ export type UserRole = 'user' | 'admin';
 export type SkillStatus = 'candidate' | 'temporary' | 'sandbox' | 'gray_matter' | 'mature' | 'universal' | 'deprecated';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'forbidden';
 export type TaskStatus = 'pending' | 'running' | 'success' | 'failed';
-export type EpisodeType = 'episode' | 'failure' | 'success' | 'parameter_patch' | 'patch_evaluation' | 'rollback_applied';
+export type EpisodeType = 'episode' | 'failure' | 'success' | 'parameter_patch' | 'patch_evaluation' | 'rollback_applied' | 'environment_bootstrap' | 'skill_compilation';
 export type ActionType = 'click' | 'fill' | 'wait' | 'screenshot' | 'handle_dialog' | 'navigate' | 'extract';
 
 // ========== 用户档案 ==========
@@ -203,6 +203,12 @@ export interface SkillSafety {
   risk_level: RiskLevel;
   fallback_action: string;
   max_action_rate_per_second: number;
+  safety_profile?: Array<{
+    step_index: number;
+    action_type: string;
+    risk_level: RiskLevel;
+    matched_rule: string;
+  }>;
 }
 
 export interface SkillMetrics {
@@ -227,6 +233,7 @@ export interface SkillCard {
   version: string;
   task_id: string | null;
   environment_profile_id: string | null;
+  compiled_from_task_run_id: string | null;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -414,6 +421,7 @@ export interface EnvironmentProfile {
   scan_status: 'pending' | 'scanning' | 'success' | 'failed';
   scan_error: string | null;
   raw_profile: Record<string, unknown>;
+  raw_scan_id: string | null;
   user_id: string;
   created_at: string;
   updated_at: string;

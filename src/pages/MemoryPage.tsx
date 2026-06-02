@@ -17,11 +17,13 @@ import {
 const EPISODE_TYPE_LABELS: Record<EpisodeType, string> = {
   episode: '事件', failure: '失败', success: '成功', parameter_patch: '参数补丁',
   patch_evaluation: '补丁评估', rollback_applied: '回滚执行',
+  environment_bootstrap: '环境自举', skill_compilation: '技能编译',
 };
 
 const EPISODE_TYPE_ICONS: Record<EpisodeType, React.ElementType> = {
   episode: Activity, failure: XCircle, success: CheckCircle, parameter_patch: Wrench,
   patch_evaluation: BarChart2, rollback_applied: RotateCcw,
+  environment_bootstrap: Database, skill_compilation: Wrench,
 };
 
 // ── episode 类型对应的展开区标题 ─────────────────────────
@@ -32,6 +34,8 @@ const DETAIL_TITLES: Record<EpisodeType, string> = {
   patch_evaluation: '补丁效果评估',
   episode: '记录详情',
   rollback_applied: '回滚执行详情',
+  environment_bootstrap: '环境自举详情',
+  skill_compilation: '技能编译详情',
 };
 
 function getDetailTitle(ep: MemoryEpisode): string {

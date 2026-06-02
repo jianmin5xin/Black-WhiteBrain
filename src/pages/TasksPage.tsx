@@ -21,8 +21,10 @@ import {
   Plus, Play, Trash2, GripVertical, ExternalLink, Clock, CheckCircle,
   XCircle, Activity, ChevronDown, ChevronUp, AlertCircle, MousePointer,
   Type, Timer, Camera, MessageSquare, Globe, Search, RefreshCw, Brain, Link2,
+  Hammer,
 } from 'lucide-react';
 
+import { evaluateSafetyGate } from '@/lib/safetyGate';
 const ACTION_DEFS: Record<ActionType, { icon: React.ElementType; label: string; placeholder: string; needsSelector: boolean; needsValue: boolean }> = {
   click:         { icon: MousePointer, label: '点击', placeholder: 'CSS选择器，如 #submit-btn', needsSelector: true, needsValue: false },
   fill:          { icon: Type, label: '填写', placeholder: 'CSS选择器，如 input[name="email"]', needsSelector: true, needsValue: true },
@@ -80,7 +82,16 @@ async function simulateTaskExecution(
 
     const started_at = new Date().toISOString();
     
-    // 预写入 step trace running 状态
+    // === SafetyGate 拦截逻辑 (Milestone 13) ===
+    const safetyEval = await evaluateSafetyGate({
+      action_type: step.type,
+      target_selector: step.selector || null,
+      input_value: step.value || null,
+    });
+
+    const isBlocked = safetyEval.decision === 'block';
+    
+    // 预写入 step trace running 状态 (如果被阻断，写 blocked)
     const { data: stepTrace } = await supabase.from('task_run_steps').insert({
       task_run_id: runId,
       user_id: userId,
@@ -88,9 +99,62 @@ async function simulateTaskExecution(
       action_type: step.type,
       target_selector: step.selector || null,
       input_value_snapshot: step.value ? { value: step.value } : null,
-      status: 'running',
+      status: isBlocked ? 'blocked' : 'running',
       started_at,
+      safety_risk_level: safetyEval.risk_level,
+      error_message: isBlocked ? `SafetyGate Blocked: ${safetyEval.reason}` : (safetyEval.decision === 'warn' ? `SafetyGate Warn: ${safetyEval.reason}` : null),
+      error_code: isBlocked ? 'SAFETY_BLOCKED' : null,
+      blocked_reason: isBlocked ? safetyEval.reason : null,
+      matched_rule: isBlocked ? safetyEval.matched_rule : null,
     }).select().maybeSingle();
+
+    if (isBlocked) {
+      stepResults.push({
+        step_id: step.id,
+        type: step.type,
+        description: step.description,
+        status: 'blocked' as any,
+        duration_ms: 0,
+        error: `SafetyGate Blocked: ${safetyEval.reason}`,
+      });
+      anyFailed = true;
+
+      // 写入 memory_episodes 证据链
+      await supabase.from('memory_episodes').insert({
+        type: 'failure',
+        title: `SafetyGate 阻断: ${step.type} 操作`,
+        content_json: { 
+          step, 
+          safety_evaluation: safetyEval,
+          task_run_id: runId,
+          safety_risk_level: safetyEval.risk_level,
+          blocked_reason: safetyEval.reason,
+          matched_rule: safetyEval.matched_rule,
+        },
+        task_id: null,
+        task_run_id: runId,
+        tags: ['safety_gate', 'blocked', safetyEval.risk_level],
+        user_id: userId,
+      });
+      continue;
+    }
+
+    if (safetyEval.decision === 'warn') {
+      // 写入 memory_episodes 作为 warning 记录
+      await supabase.from('memory_episodes').insert({
+        type: 'episode',
+        title: `SafetyGate 告警: ${step.type} 操作`,
+        content_json: { 
+          step, 
+          safety_evaluation: safetyEval,
+          task_run_id: runId 
+        },
+        task_id: null,
+        task_run_id: runId,
+        tags: ['safety_gate', 'warning', safetyEval.risk_level],
+        user_id: userId,
+      });
+    }
 
     // 模拟执行耗时
     const duration_ms = Math.floor(Math.random() * 800) + 100;
@@ -108,9 +172,9 @@ async function simulateTaskExecution(
         status,
         ended_at,
         duration_ms,
-        error_message: errorMsg || null,
-        error_code: failed ? 'ELEMENT_NOT_FOUND' : null,
-        safety_risk_level: 'low',
+        // 如果有 warning，保留 error_message 或者追加
+        error_message: failed ? errorMsg : stepTrace.error_message,
+        error_code: failed ? 'ELEMENT_NOT_FOUND' : stepTrace.error_code,
         dom_snapshot_ref: failed ? `dom_snap_${Date.now()}` : null,
         screenshot_ref: failed ? `screenshot_${Date.now()}` : null,
       }).eq('id', stepTrace.id);
@@ -155,6 +219,40 @@ function TaskRunHistory({
 }) {
   // expandRunId 优先，其次 autoAnalyzeRunId
   const [expanded, setExpanded] = useState<string | null>(expandRunId ?? autoAnalyzeRunId ?? null);
+  const [compilingRunId, setCompilingRunId] = useState<string | null>(null);
+
+  const handleCompile = async (run: TaskRun) => {
+    if (!task.environment_profile_id) {
+      toast.error('该任务未绑定环境画像，无法编译技能卡');
+      return;
+    }
+    setCompilingRunId(run.id);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) { toast.error('未登录'); return; }
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/compile-gray-skill`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_id: task.id,
+          task_run_id: run.id,
+          environment_profile_id: task.environment_profile_id,
+        }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        toast.error(json.error || '编译失败');
+      } else {
+        toast.success(`技能卡编译成功: ${json.data?.skill_card?.name}`);
+        onRefresh();
+      }
+    } catch (e: any) {
+      toast.error(e.message || '编译请求失败');
+    } finally {
+      setCompilingRunId(null);
+    }
+  };
 
   if (loading) return <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 bg-muted" />)}</div>;
   if (runs.length === 0) return <p className="text-xs text-muted-foreground font-mono py-4 text-center">暂无执行记录</p>;
@@ -273,11 +371,23 @@ function TaskRunHistory({
                   </div>
                 )}
 
-                {/* 成功任务的简单摘要 */}
+                {/* 成功任务的简单摘要 + 编译按钮 */}
                 {!isFailed && run.status === 'success' && (
-                  <div className="flex items-center gap-2 p-2.5 border border-primary/20 bg-primary/5">
-                    <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-                    <p className="text-xs font-mono text-primary">任务执行成功，所有步骤已完成</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 p-2.5 border border-primary/20 bg-primary/5">
+                      <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <p className="text-xs font-mono text-primary">任务执行成功，所有步骤已完成</p>
+                    </div>
+                    {!run.is_legacy_run && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCompile(run); }}
+                        disabled={compilingRunId === run.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono border border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                      >
+                        <Hammer className="w-3 h-3" />
+                        {compilingRunId === run.id ? '编译中...' : '编译为技能卡'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -615,8 +725,9 @@ export default function TasksPage() {
       steps_result: result.stepResults,
       analysis: null,
       suggestions: [],
-      error_message: result.success ? null : '部分步骤执行失败，请使用白质层AI推理进行根因分析',
-      failed_step_index: result.success ? null : result.stepResults.findIndex(r => r.status === 'failed')
+      error_message: result.success ? null : '部分步骤执行失败或被阻断，请使用白质层AI推理进行根因分析',
+      // Milestone 13: 失败步索引包含 failed 和 blocked 两种状态
+      failed_step_index: result.success ? null : result.stepResults.findIndex(r => r.status === 'failed' || (r.status as any) === 'blocked')
     }).eq('id', runData.id);
 
     // 更新任务统计

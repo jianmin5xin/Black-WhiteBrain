@@ -52,6 +52,7 @@ function simulateBootstrap(url: string, userId: string): EnvironmentProfile {
       has_authentication: true,
       scan_duration_ms: Math.floor(Math.random() * 800) + 200,
     },
+    raw_scan_id: null,
     user_id: userId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -188,6 +189,7 @@ export default function BootstrapPage() {
   // ── 扫描状态 ─────────────────────────────────────────────────────
   const [url, setUrl] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [bootStep, setBootStep] = useState<'idle' | 'scanning' | 'analyzing' | 'done'>('idle');
   const [result, setResult] = useState<EnvironmentProfile | null>(null);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -222,21 +224,78 @@ export default function BootstrapPage() {
     );
   }, [profiles, historySearch]);
 
-  // ── 扫描操作 ─────────────────────────────────────────────────────
+  // ── 扫描操作 ─ Bootloader → Raw Scan → Bootstrap-Environment → Profile ─
   const scan = async () => {
     if (!url.trim()) { toast.error('请输入目标URL'); return; }
+    if (!user) { toast.error('请先登录'); return; }
+
     setScanning(true);
     setSaved(false);
     setResult(null);
-    await new Promise(r => setTimeout(r, 1500));
+    setBootStep('scanning');
+
     try {
-      const profile = simulateBootstrap(url.trim(), user?.id || '');
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw new Error('未获取登录 token');
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+
+      // Step 1: 调用 Bootloader (最小扫描)
+      const bootRes = await fetch(`${supabaseUrl}/functions/v1/bootstrap-env`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target_url: url.trim() }),
+      });
+
+      if (!bootRes.ok) {
+        const err = await bootRes.json().catch(() => ({}));
+        throw new Error(err.error || `Bootloader 失败: ${bootRes.status}`);
+      }
+
+      const bootData = await bootRes.json();
+      const rawScanId = bootData.data?.raw_scan_id;
+      if (!rawScanId) throw new Error('Bootloader 未返回 raw_scan_id');
+
+      toast.success(`原始扫描完成，共发现 ${bootData.data?.raw_elements?.length || 0} 个元素`);
+
+      // Step 2: 调用白质层推理 (bootstrap-environment)
+      setBootStep('analyzing');
+
+      const envRes = await fetch(`${supabaseUrl}/functions/v1/bootstrap-environment`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw_scan_id: rawScanId }),
+      });
+
+      if (!envRes.ok) {
+        const err = await envRes.json().catch(() => ({}));
+        throw new Error(err.error || `推理失败: ${envRes.status}`);
+      }
+
+      const envData = await envRes.json();
+      const profile = envData.data?.profile;
+      if (!profile) throw new Error('推理未返回 profile');
+
       setResult(profile);
-      toast.success('环境扫描完成，能力画像已生成');
-    } catch {
-      toast.error('URL格式无效');
+      setSaved(true);
+      toast.success('环境能力画像生成完成，已保存至记忆库');
+      fetchHistory();
+      setBootStep('done');
+
+    } catch (err: any) {
+      console.error('Scan error:', err);
+      toast.error(err.message || '扫描失败');
+      setBootStep('idle');
+    } finally {
+      setScanning(false);
     }
-    setScanning(false);
   };
 
   const saveProfile = async () => {
@@ -341,22 +400,34 @@ export default function BootstrapPage() {
               </div>
             </div>
 
-            {/* 扫描进度动画 */}
+            {/* 扫描进度动画 ─ Bootloader → 白质层推理 ─ */}
             {scanning && (
               <div className="border border-primary/30 bg-primary/5 p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-primary animate-spin" />
-                  <span className="text-xs font-mono text-primary">自举层扫描中...</span>
+                  <span className="text-xs font-mono text-primary">
+                    {bootStep === 'scanning' ? 'Bootloader 采集中...' : '白质层推理中...'}
+                  </span>
                 </div>
-                {['识别环境类型', '发现感知面', '发现执行面', '发现反馈面', '评估缺失能力', '生成适配器推荐'].map((step, i) => (
-                  <div key={step} className="flex items-center gap-2 pl-6">
-                    <div
-                      className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse"
-                      style={{ animationDelay: `${i * 200}ms` }}
-                    />
-                    <span className="text-xs font-mono text-muted-foreground">{step}</span>
-                  </div>
-                ))}
+                {bootStep === 'scanning' ? (
+                  <>
+                    {['打开目标URL', '等待 networkidle', '扫描DOM节点', '提取原始属性', '保存原始扫描'].map((step, i) => (
+                      <div key={step} className="flex items-center gap-2 pl-6">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+                        <span className="text-xs font-mono text-muted-foreground">{step}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {['读取原始扫描', '生成 selector 候选', '推断语义角色', '判断能力面', '推荐适配器', '生成环境画像'].map((step, i) => (
+                      <div key={step} className="flex items-center gap-2 pl-6">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+                        <span className="text-xs font-mono text-muted-foreground">{step}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
 

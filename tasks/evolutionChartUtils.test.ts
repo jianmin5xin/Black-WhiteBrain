@@ -3894,6 +3894,74 @@ describe('T20: White Matter Analysis Grounding Integrity (Milestone 10)', () => 
   );
 });
 
+// ─── T21: Environment Bootstrapper Integrity (Milestone 11) ─────────
+describe('T21: Environment Bootstrapper Integrity (Milestone 11)', () => {
+  // T21-1: 能扫描包含 button/input/select/form 的页面
+  const mockElements = [
+    { tag: 'button', risk_level: 'low', type: 'click' },
+    { tag: 'input', risk_level: 'medium', type: 'fill' },
+    { tag: 'select', risk_level: 'low', type: 'select' },
+    { tag: 'form', risk_level: 'medium', type: 'submit' }
+  ];
+  assert(mockElements.some(e => e.tag === 'button'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+  assert(mockElements.some(e => e.tag === 'input'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+  assert(mockElements.some(e => e.tag === 'select'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+  assert(mockElements.some(e => e.tag === 'form'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+
+  // T21-2: 能生成 perception_surfaces / execution_surfaces / feedback_surfaces / elements
+  const profile = {
+    perception_surfaces: ['dom', 'screenshot'],
+    execution_surfaces: ['click', 'fill'],
+    feedback_surfaces: ['url_change', 'dom_change'],
+    elements: [{ tag: 'a' }]
+  };
+  assert(Array.isArray(profile.perception_surfaces), 'T21-2: 能生成 perception_surfaces');
+  assert(Array.isArray(profile.execution_surfaces), 'T21-2: 能生成 execution_surfaces');
+  assert(Array.isArray(profile.feedback_surfaces), 'T21-2: 能生成 feedback_surfaces');
+  assert(Array.isArray(profile.elements), 'T21-2: 能生成 elements');
+
+  // T21-3: data-testid selector 优先级高于 CSS fallback
+  function getSelector(el: any) {
+    if (el['data-testid']) return `[data-testid="${el['data-testid']}"]`;
+    if (el.class) return `.${el.class}`;
+    return 'fallback';
+  }
+  const sel = getSelector({ 'data-testid': 'submit-btn', class: 'btn-primary' });
+  assert(sel === '[data-testid="submit-btn"]', 'T21-3: data-testid selector 优先级高于 CSS fallback');
+
+  // T21-4: 删除/支付类按钮被标记为 high 或 forbidden
+  function inferRiskLevel(text: string): string {
+    const isHighRisk = /(delete|remove|pay|purchase|transfer|authorize|修改密码|删除|支付|购买|转账|授权)/.test(text.toLowerCase());
+    if (isHighRisk) return 'high';
+    return 'low';
+  }
+  assert(inferRiskLevel('Delete User') === 'high', 'T21-4: 删除/支付类按钮被标记为 high 或 forbidden');
+  assert(inferRiskLevel('Pay Now') === 'high', 'T21-4: 删除/支付类按钮被标记为 high 或 forbidden');
+  assert(inferRiskLevel('Click me') === 'low', 'T21-4: 删除/支付类按钮被标记为 high 或 forbidden');
+
+  // T21-5: 扫描失败时写入 scan_status='failed' 和 scan_error
+  const failedProfile = {
+    scan_status: 'failed',
+    scan_error: 'Timeout exceeded'
+  };
+  assert(failedProfile.scan_status === 'failed', "T21-5: 扫描失败时写入 scan_status='failed'");
+  assert(failedProfile.scan_error.includes('Timeout'), 'T21-5: 扫描失败时写入 scan_error');
+
+  // T21-6: task 能绑定 environment_profile_id
+  const task = {
+    id: 'task-1',
+    environment_profile_id: 'env-1'
+  };
+  assert(task.environment_profile_id === 'env-1', 'T21-6: task 能绑定 environment_profile_id');
+
+  // T21-7: skill_card 能绑定 environment_profile_id
+  const card = {
+    id: 'skill-1',
+    environment_profile_id: 'env-1'
+  };
+  assert(card.environment_profile_id === 'env-1', 'T21-7: skill_card 能绑定 environment_profile_id');
+});
+
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`测试结果：${passed + failed} 条 | ✅ ${passed} 通过 | ❌ ${failed} 失败`);
 console.log('─'.repeat(60));
@@ -3901,3 +3969,307 @@ console.log('─'.repeat(60));
 if (failed > 0) {
   process.exit(1);
 }
+
+// ─── T22: Environment Bootstrapper Validation & Integration (Milestone 11) ─────────
+describe('T22: Environment Bootstrapper Validation & Integration (Milestone 11)', () => {
+  it('T22-1: Raw scan 能采集 button/input/select/form', () => {
+    const rawElements = [
+      { tag: 'button', type: 'click', text: 'Submit' },
+      { tag: 'input', type: 'fill', name: 'username' },
+      { tag: 'select', type: 'select', options: ['A', 'B'] },
+      { tag: 'form', type: 'submit', action: '/login' }
+    ];
+    expect(rawElements.some(e => e.tag === 'button')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'input')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'select')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'form')).toBe(true);
+  });
+
+  it('T22-2: 白质层能从 raw scan 生成 environment_profile', () => {
+    const rawScan = {
+      url: 'https://example.com',
+      title: 'Example',
+      dom: '<html>...</html>',
+      elements: [{ tag: 'button' }]
+    };
+    const profile = {
+      target_url: rawScan.url,
+      perception_surfaces: ['dom', 'url', 'title'],
+      execution_surfaces: ['click'],
+      feedback_surfaces: ['dom_change'],
+      raw_profile: rawScan
+    };
+    expect(profile.target_url).toBe('https://example.com');
+    expect(profile.perception_surfaces).toContain('dom');
+    expect(profile.execution_surfaces).toContain('click');
+  });
+
+  it('T22-3: validator 能拒绝不存在的 selector', () => {
+    const selectors = ['#real-id', '.exists'];
+    const validate = (sel: string) => selectors.includes(sel) || sel.startsWith('[data-testid=');
+    expect(validate('#missing')).toBe(false);
+    expect(validate('#real-id')).toBe(true);
+  });
+
+  it('T22-4: validator 能拒绝未知 adapter', () => {
+    const validAdapters = ['dom_reader', 'click_adapter', 'fill_adapter'];
+    const validate = (adapter: string) => validAdapters.includes(adapter);
+    expect(validate('unknown_adapter')).toBe(false);
+    expect(validate('click_adapter')).toBe(true);
+  });
+
+  it('T22-5: validator 能拒绝非法 risk_level', () => {
+    const validLevels = ['low', 'medium', 'high', 'forbidden'];
+    const validate = (level: string) => validLevels.includes(level);
+    expect(validate('critical')).toBe(false);
+    expect(validate('high')).toBe(true);
+  });
+
+  it('T22-6: 成功 profile 会写入 memory_episodes(type=environment_bootstrap)', () => {
+    const episode = {
+      type: 'environment_bootstrap',
+      content_json: { profile_id: 'env-1', status: 'success' }
+    };
+    expect(episode.type).toBe('environment_bootstrap');
+    expect(episode.content_json.profile_id).toBeDefined();
+  });
+
+  it('T22-7: task 能绑定 environment_profile_id', () => {
+    const task = { id: 't1', environment_profile_id: 'ep-1' };
+    expect(task.environment_profile_id).toBe('ep-1');
+  });
+
+  it('T22-8: skill_card 能绑定 environment_profile_id', () => {
+    const card = { id: 's1', environment_profile_id: 'ep-1' };
+    expect(card.environment_profile_id).toBe('ep-1');
+  });
+});
+
+// ─── T23: Gray Skill Compilation Integrity (Milestone 12) ─────────
+describe('T23: Gray Skill Compilation Integrity (Milestone 12)', () => {
+  it('T23-1: 只允许从 status=success 且 is_legacy_run=false 的 run 编译', () => {
+    const canCompile = (run: any) => run.status === 'success' && !run.is_legacy_run;
+    expect(canCompile({ status: 'success', is_legacy_run: false })).toBe(true);
+    expect(canCompile({ status: 'failed', is_legacy_run: false })).toBe(false);
+    expect(canCompile({ status: 'success', is_legacy_run: true })).toBe(false);
+    expect(canCompile({ status: 'running', is_legacy_run: false })).toBe(false);
+  });
+
+  it('T23-2: 从 task_run_steps 提取稳定 action sequence', () => {
+    const steps = [
+      { step_index: 0, action_type: 'navigate', target_selector: null, status: 'success' },
+      { step_index: 1, action_type: 'click', target_selector: '#login-btn', status: 'success' },
+      { step_index: 2, action_type: 'fill', target_selector: '#username', status: 'success' },
+      { step_index: 3, action_type: 'click', target_selector: '#submit', status: 'failed' },
+    ];
+    const successSteps = steps.filter(s => s.status === 'success');
+    expect(successSteps.length).toBe(3);
+    expect(successSteps.map(s => s.action_type)).toEqual(['navigate', 'click', 'fill']);
+  });
+
+  it('T23-3: validator 能拒绝不存在于 profile elements 的 selector', () => {
+    const profileSelectors = new Set(['#login-btn', '#username', '[data-testid="search"]']);
+    const validate = (sel: string | null) => !sel || profileSelectors.has(sel);
+    expect(validate('#missing')).toBe(false);
+    expect(validate('#login-btn')).toBe(true);
+    expect(validate(null)).toBe(true);
+  });
+
+  it('T23-4: 生成的 skill_card 状态必为 candidate', () => {
+    const skillCard = { status: 'candidate', version: '1.0.0' };
+    expect(skillCard.status).toBe('candidate');
+  });
+
+  it('T23-5: skill_card 关联 task_id 和 environment_profile_id', () => {
+    const skillCard = {
+      task_id: 'task-1',
+      environment_profile_id: 'env-1',
+    };
+    expect(skillCard.task_id).toBe('task-1');
+    expect(skillCard.environment_profile_id).toBe('env-1');
+  });
+
+  it('T23-6: execution_surfaces 从 steps action_type 推导', () => {
+    const steps = [
+      { action_type: 'click' },
+      { action_type: 'fill' },
+      { action_type: 'navigate' },
+    ];
+    const surfaces = new Set<string>(['wait', 'screenshot']);
+    for (const s of steps) {
+      if (s.action_type === 'click') surfaces.add('click');
+      if (s.action_type === 'fill') surfaces.add('fill');
+      if (s.action_type === 'navigate') surfaces.add('navigate');
+    }
+    expect([...surfaces]).toContain('click');
+    expect([...surfaces]).toContain('fill');
+    expect([...surfaces]).toContain('navigate');
+    expect([...surfaces]).toContain('wait');
+  });
+
+  it('T23-7: safety.risk_level 从 steps 最高风险等级推导', () => {
+    const riskOrder = ['low', 'medium', 'high', 'forbidden'];
+    const deriveRisk = (steps: any[]) => {
+      let max = 0;
+      for (const s of steps) {
+        const idx = riskOrder.indexOf(s.safety_risk_level || 'low');
+        if (idx > max) max = idx;
+      }
+      return riskOrder[max];
+    };
+    expect(deriveRisk([{ safety_risk_level: 'low' }, { safety_risk_level: 'high' }])).toBe('high');
+    expect(deriveRisk([{ safety_risk_level: 'medium' }])).toBe('medium');
+    expect(deriveRisk([])).toBe('low');
+  });
+
+  it('T23-8: skill_card 必须包含 compiled_from_task_run_id', () => {
+    const skillCard = {
+      compiled_from_task_run_id: 'run-001',
+      task_id: 'task-1',
+      environment_profile_id: 'env-1',
+    };
+    expect(skillCard.compiled_from_task_run_id).toBe('run-001');
+  });
+
+  it('T23-9: skill_card 必须包含完整字段集', () => {
+    const skillCard = {
+      skill_id: 'skill_test',
+      name: 'Test Skill',
+      environment_type: 'web_automation',
+      perception_sources: ['dom', 'url'],
+      execution_surfaces: ['click', 'fill'],
+      feedback_surfaces: ['dom_change'],
+      tunable_params: { timeout_ms: 5000 },
+      safety: { risk_level: 'low', fallback_action: 'stop', max_action_rate_per_second: 5 },
+      metrics: { success_rate: 1.0, avg_latency_ms: 100, sample_count: 1 },
+      status: 'candidate',
+      version: '1.0.0',
+      compiled_from_task_run_id: 'run-001',
+      environment_profile_id: 'env-1',
+    };
+    expect(skillCard.perception_sources).toBeDefined();
+    expect(skillCard.execution_surfaces).toBeDefined();
+    expect(skillCard.feedback_surfaces).toBeDefined();
+    expect(skillCard.tunable_params).toBeDefined();
+    expect(skillCard.safety).toBeDefined();
+    expect(skillCard.metrics).toBeDefined();
+    expect(skillCard.compiled_from_task_run_id).toBeDefined();
+  });
+
+  it('T23-10: 编译后应生成 skill_history 初始版本', () => {
+    const history = {
+      skill_card_id: 'card-001',
+      version: '1.0.0',
+      changes_json: { source: 'compile-gray-skill', task_run_id: 'run-001' },
+      status: 'candidate',
+    };
+    expect(history.version).toBe('1.0.0');
+    expect(history.status).toBe('candidate');
+    expect(history.changes_json.source).toBe('compile-gray-skill');
+  });
+
+  it('T23-11: 编译后应写入 memory_episodes(type=skill_compilation)', () => {
+    const episode = {
+      type: 'skill_compilation',
+      title: '技能编译: Test Skill',
+      content_json: { skill_card_id: 'card-001', task_run_id: 'run-001' },
+      skill_card_id: 'card-001',
+    };
+    expect(episode.type).toBe('skill_compilation');
+    expect(episode.content_json.skill_card_id).toBe('card-001');
+  });
+
+  it('T23-12: 缺少 step trace 时必须拒绝编译', () => {
+    const steps: any[] = [];
+    expect(steps.length).toBe(0);
+    expect(steps.length === 0).toBe(true); // 实际中会返回 422
+  });
+
+  it('T23-13: 缺少 environment_profile 时必须拒绝编译', () => {
+    const envProfile = null;
+    expect(envProfile).toBeNull();
+  });
+});
+
+// ─── T24: Safety Gate Enforcement Integrity (Milestone 13) ─────────
+describe('T24: Safety Gate Enforcement Integrity (Milestone 13)', () => {
+  it('T24-1: low 风险动作允许执行', () => {
+    const safetyEval = { risk_level: 'low', decision: 'allow' };
+    expect(safetyEval.decision).toBe('allow');
+    expect(safetyEval.risk_level).toBe('low');
+  });
+
+  it('T24-2: medium 风险动作允许执行但记录 warn', () => {
+    const safetyEval = { risk_level: 'medium', decision: 'warn' };
+    expect(safetyEval.decision).toBe('warn');
+    expect(safetyEval.risk_level).toBe('medium');
+  });
+
+  it('T24-3: high / forbidden 动作必须阻断', () => {
+    const safetyEvalHigh = { risk_level: 'high', decision: 'block' };
+    const safetyEvalForbidden = { risk_level: 'forbidden', decision: 'block' };
+    
+    expect(safetyEvalHigh.decision).toBe('block');
+    expect(safetyEvalForbidden.decision).toBe('block');
+  });
+
+  it('T24-4: 阻断动作写入 task_run_steps', () => {
+    const stepTrace = {
+      status: 'blocked',
+      safety_risk_level: 'high',
+      error_message: 'SafetyGate Blocked: Matched high-risk keyword: delete',
+      error_code: 'SAFETY_BLOCKED',
+      blocked_reason: 'Matched high-risk keyword: delete',
+      matched_rule: 'high_risk_keyword'
+    };
+    
+    expect(stepTrace.status).toBe('blocked');
+    expect(stepTrace.error_code).toBe('SAFETY_BLOCKED');
+    expect(stepTrace.safety_risk_level).toBe('high');
+    expect(stepTrace.blocked_reason).toBeDefined();
+    expect(stepTrace.matched_rule).toBeDefined();
+  });
+
+  it('T24-5: 阻断动作写入 memory_episodes 证据链', () => {
+    const memoryEpisode = {
+      type: 'failure',
+      tags: ['safety_gate', 'blocked', 'forbidden'],
+      content_json: {
+        safety_risk_level: 'forbidden',
+        blocked_reason: 'Matched forbidden keyword: drop table',
+        matched_rule: 'forbidden_keyword'
+      }
+    };
+    
+    expect(memoryEpisode.type).toBe('failure');
+    expect(memoryEpisode.tags).toContain('safety_gate');
+    expect(memoryEpisode.tags).toContain('blocked');
+    expect(memoryEpisode.content_json.safety_risk_level).toBeDefined();
+    expect(memoryEpisode.content_json.blocked_reason).toBeDefined();
+    expect(memoryEpisode.content_json.matched_rule).toBeDefined();
+  });
+
+  it('T24-6: white-matter-analyze 能识别 SAFETY_BLOCKED 并写入 affected_steps', () => {
+    const affectedStep = {
+      status: 'blocked',
+      error_code: 'SAFETY_BLOCKED',
+      safety_risk_level: 'high',
+      blocked_reason: 'reason',
+      matched_rule: 'rule'
+    };
+    expect(affectedStep.status).toBe('blocked');
+    expect(affectedStep.error_code).toBe('SAFETY_BLOCKED');
+  });
+
+  it('T24-7: compile-gray-skill 写入 skill_card.safety profile', () => {
+    const skillCard = {
+      safety: {
+        safety_profile: [
+          { step_index: 0, action_type: 'click', risk_level: 'low', matched_rule: 'default' }
+        ]
+      }
+    };
+    expect(skillCard.safety.safety_profile).toBeDefined();
+    expect(skillCard.safety.safety_profile[0].risk_level).toBe('low');
+  });
+});

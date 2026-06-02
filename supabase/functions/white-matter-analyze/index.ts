@@ -125,11 +125,14 @@ function buildSystemPrompt(): string {
   - step_index: 该步骤在 task_run_steps 中的索引号（整数，从0开始）
   - action_type: 执行的操作类型（如 click、fill、submit 等）
   - target_selector: 目标 DOM 选择器字符串（如无则为 null）
-  - status: 该步骤的执行结果（success | failed | skipped | running）
-  - error_code: 错误代码（如 ELEMENT_NOT_FOUND，如无则为 null）
+  - status: 该步骤的执行结果（success | failed | skipped | running | blocked）
+  - error_code: 错误代码（如 ELEMENT_NOT_FOUND, SAFETY_BLOCKED 等，如无则为 null）
   - error_message: 错误信息原文，如存在则直接引用（无则为 null）
   - safety_risk_level: 安全风险等级（low | medium | high | forbidden | null）
+  - blocked_reason: SafetyGate 阻断原因（如有则记录，如无则为 null）
+  - matched_rule: SafetyGate 匹配规则（如有则记录，如无则为 null）
   - evidence_summary: 一句话说明为什么该步骤被认定为受影响（必须引用真实数据）
+- 对于 status="blocked" 或 error_code="SAFETY_BLOCKED" 的步骤，必须明确将其包含在 affected_steps 中，并在 root_cause 中分析安全阻断原因
 - suggestions 每条必须包含 evidence_step_indexes（整数数组），列出该建议所依据的受影响步骤索引，不得为空数组
 - suggestions 至少 2 条，最多 5 条
 - param_patches 可为空数组 []，若不为空，每条必须包含 evidence_step_indexes（整数数组）和 reason
@@ -139,7 +142,7 @@ function buildSystemPrompt(): string {
 **JSON 结构如下（直接输出，不含代码块）：**
 {
   "root_cause": "步骤3[fill] 因选择器 #name 对应的元素未找到，导致...",
-  "failure_type": "element_not_found | timeout | assertion_failed | navigation_error | permission_denied | unknown",
+  "failure_type": "element_not_found | timeout | assertion_failed | navigation_error | permission_denied | safety_blocked | unknown",
   "affected_steps": [
     {
       "step_index": 2,
@@ -149,6 +152,8 @@ function buildSystemPrompt(): string {
       "error_code": "ELEMENT_NOT_FOUND",
       "error_message": "元素未找到: #name",
       "safety_risk_level": "low",
+      "blocked_reason": null,
+      "matched_rule": null,
       "evidence_summary": "该步骤选择器 #name 在目标页面中不存在，与 error_code ELEMENT_NOT_FOUND 直接对应。"
     }
   ],
@@ -188,6 +193,7 @@ function buildUserPrompt(payload: {
     safety_risk_level?: string;
   }>;
   error_message?: string;
+  environment_profile?: Record<string, unknown> | null;
 }): string {
   const stepsDesc = payload.steps
     .map((s, i) => `  步骤${i + 1}: ${s.action}${s.selector ? ` [${s.selector}]` : ""}${s.value ? ` = "${s.value}"` : ""}`)
@@ -201,6 +207,10 @@ function buildUserPrompt(payload: {
     .join("\n");
 
   const failedSteps = payload.steps_result.filter(r => r.status === 'failed' || r.safety_risk_level === 'high' || r.safety_risk_level === 'forbidden');
+
+  const envProfileDesc = payload.environment_profile
+    ? `\n**目标环境画像 (Environment Profile)**\n- URL: ${(payload.environment_profile as any).target_url || payload.target_url}\n- 感知面: ${JSON.stringify((payload.environment_profile as any).perception_surfaces)}\n- 执行面: ${JSON.stringify((payload.environment_profile as any).execution_surfaces)}\n- 元素数: ${((payload.environment_profile as any).raw_profile?.execution_surfaces || []).length}`
+    : '';
 
   return `请对以下失败的网页自动化任务进行根因分析。
 
@@ -217,6 +227,7 @@ ${resultsDesc}
 
 **异常步骤摘要**
 ${failedSteps.length === 0 ? '  无明确 failed 步骤，请重点检查 timeout、skipped 或其他异常标记。' : failedSteps.map(f => `  步骤${f.step_index + 1} [${f.action}]: ${f.error || '异常'} (风险: ${f.safety_risk_level || 'low'})`).join('\n')}
+${envProfileDesc}
 
 **分析要求**
 1. root_cause 必须引用至少一个异常步骤（failed 或高风险）的 step_index。
@@ -304,6 +315,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
       safety_risk_level: st.safety_risk_level
     }));
 
+    // Milestone 11: 若存在 environment_profile_id，读取环境画像作为分析上下文
+    let environmentProfile: Record<string, unknown> | null = null;
+    if (environment_profile_id) {
+      const { data: epData } = await supabaseService
+        .from("environment_profiles")
+        .select("*")
+        .eq("id", environment_profile_id)
+        .maybeSingle();
+      if (epData) {
+        environmentProfile = epData as Record<string, unknown>;
+        console.log(`[白质层] 已加载环境画像: ${environment_profile_id}`);
+      }
+    }
+
     const { data: modelConfigData } = await supabaseService
       .from("model_configs")
       .select("provider, api_key, is_active")
@@ -321,7 +346,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       { role: "system", content: buildSystemPrompt() },
       {
         role: "user",
-        content: buildUserPrompt({ task_name, target_url, steps: steps || [], steps_result: formattedStepsResult, error_message }),
+        content: buildUserPrompt({ task_name, target_url, steps: steps || [], steps_result: formattedStepsResult, error_message, environment_profile: environmentProfile }),
       },
     ];
 

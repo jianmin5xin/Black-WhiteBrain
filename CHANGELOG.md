@@ -3,6 +3,181 @@
 所有值得记录的变更按版本倒序排列，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 
 ---
+## [v55] — 2026-05-19 · Milestone 14: End-to-End Bootstrap-to-Skill Acceptance
+
+### 目标
+以端到端测试验证自举层 → 灰质编译层 → 灰质执行层 → 安全层 → 白质层 → 海马层 → 元目标层的完整串联。
+
+### 变更内容
+- **测试页面 Fixture**：构建标准 HTML 测试场景，包含 input×2、submit按钮、普通按钮、high 风险按钮（Delete Account）、forbidden 风险按钮（drop table users）以及 form 容器，覆盖完整交互面元素谱。
+- **T25 E2E 测试套件**（共 11 组、超过 50 个断言用例）：
+  - **T25-A**: fixture 及 Raw Scan 结构验证
+  - **T25-B**: Selector 10 级优先级生成策略（data-testid > aria-label > id > name > placeholder > CSS fallback）
+  - **T25-C**: 环境画像生成，包括 perception/execution/feedback surfaces、elements、risk_level 分类
+  - **T25-D**: task 绑定 environment_profile_id
+  - **T25-E**: task_run 成功执行与 task_run_steps 字段完整性
+  - **T25-F**: medium 风险步骤允许执行且记录 SafetyGate Warn、executor_called=true
+  - **T25-G**: high/forbidden 步骤必须阻断、executor_called=false、error_code=SAFETY_BLOCKED（核心约束）
+  - **T25-H**: blocked step 必须入库 task_run_steps，包含完整阻断证据字段
+  - **T25-I**: 从成功 task_run 编译 candidate skill_card，验证 action_sequence、safety_profile、compiled_from_task_run_id
+  - **T25-J**: 使用 skill_card 驱动第二次执行（重放能力）
+  - **T25-K**: 全链路完整闭环验证，包括白质层对 SAFETY_BLOCKED 的 affected_steps 识别与海马层证据落盘
+- **安全层触发器：evaluateSafetyGateSync**—纯函数与业务一致，可应用于单元测试，确保 high/forbidden 关键词在任何上下文中均能正确触发阻断。
+- **灰质编译器 compileSkillCard**—可从模拟的 task_run_steps 推导 execution_surfaces、风险等级、safety_profile 和版本号，完全覆盖 compile-gray-skill Edge Function 的业务逻辑。
+
+---
+
+## [v54.1] — 2026-05-19 · Milestone 13 补充：Safety Gate Enforcement 强化
+
+### 变更内容
+- **更新数据库 schema**：`task_run_steps` 表状态枚举增加 `blocked`，增加 `blocked_reason` 和 `matched_rule` 字段。
+- **完善前端执行轨迹记录**：对于被拦截的动作，写入 `status: 'blocked'` 和 `error_code: 'SAFETY_BLOCKED'`，并将拦截理由和匹配规则写入 `task_run_steps` 和 `memory_episodes` 海马层。
+- **更新失败追踪索引**：在执行报错时，`task_runs.failed_step_index` 将不仅指向 `failed` 状态，也会正确指向 `blocked` 状态的步骤。
+- **白质层分析增强**：更新了 `white-matter-analyze` 的 prompt 指导原则，明确要求其识别并处理 `status='blocked'` 和 `error_code='SAFETY_BLOCKED'`，在返回的 `affected_steps` 中加入 `blocked_reason` 和 `matched_rule`。
+- **灰质层技能编译增强**：更新 `compile-gray-skill`，它会在生成 `skill_card` 时构建并附带 `safety_profile`（各步骤的详细风险等级与匹配规则记录），写入 `skill_card.safety` 字段，实现安全画像固化。
+- **更新测试用例**：扩展了 T24 测试，新增 T24-6/T24-7 断言，覆盖新的状态和字段约束，Lint 检查已全量通过。
+
+---
+
+## [v54] — 2026-05-19 · Milestone 13: Safety Gate Enforcement Integrity
+
+### 目标
+保证所有灰质层任务步骤在执行前经过 SafetyGate 裁决，高风险或禁止的动作将被直接阻断，完整记录证据链，确保系统执行的安全性。
+
+### 变更内容
+- **实现 SafetyGate 模块**：新增 `src/lib/safetyGate.ts`，基于动作类型、选择器、输入值的内容进行关键字匹配和风险评估，支持四级风险（low, medium, high, forbidden）及相应裁决（allow, warn, block）。
+- **执行前安全拦截**：在 `TasksPage.tsx` 的 `simulateTaskExecution` 逻辑中接入 SafetyGate。在每个 task_step 实际执行（或模拟耗时）前：
+  - 对风险评估结果为 `block` (high / forbidden) 的操作，直接置为 failed，**跳过后续实际执行逻辑**，不调用真实 action executor。
+  - 对评估为 `warn` (medium) 的操作允许执行，但生成告警记录。
+- **完善证据链写入**：
+  - 在 `task_run_steps` 表中准确记录 `safety_risk_level`；阻断时写入 `error_code: 'SAFETY_VIOLATION'` 和具体的阻断原因。
+  - 同步将阻断和告警记录写入 `memory_episodes` 海马层，供后续白质层审查和系统回溯（tags 包含 safety_gate, blocked/warning 等）。
+- **测试覆盖增强**：增加 T24 测试用例（T24-1 ~ T24-5），验证各等级风险控制逻辑、阻断效果和证据链（task_run_steps 及 memory_episodes）的数据记录完整性。
+
+---
+
+## [v52] — 2026-05-19 · Milestone 11 补充：灰质编译测试覆盖与边缘函数可靠性确认
+
+### 目标
+确保灰质层技能编译（compile-gray-skill）的所有核心验证规则、编译后数据写入逻辑均被 T23 测试套件完整覆盖，并确保数据库模型、边缘函数与测试用例三者一致。
+
+### 变更内容
+- **编译条件强校验**：边缘函数 `compile-gray-skill` 严格实现了以下校验规则：
+  - 只允许 `status='success'` 且 `is_legacy_run=false` 的 `task_run` 进行编译，失败或 legacy 执行记录均返回 HTTP 422 拒绝。
+  - 缺少 `task_run_steps` 或 `environment_profile` 时同样返回 422，防止空数据导致的编译结果不可靠。
+  - 对每个成功步骤的 `target_selector` 进行存在性校验，若 selector 不在 `environment_profile.elements` 中，则拒绝编译并返回具体的 `invalid_steps` 列表。
+- **编译产物完整性**：成功编译后系统自动执行以下操作：
+  - 插入 `skill_card`（`status='candidate'`），包含 `compiled_from_task_run_id` 字段以追溯来源。
+  - 写入 `skill_history` 初始版本记录，标记 `source: 'compile-gray-skill'`。
+  - 写入 `memory_episodes(type='skill_compilation')`，形成编译事件的完整记录。
+- **测试套件 T23 覆盖确认**：现有 T23 测试套件（共13个断言）已全量覆盖以下场景：
+  - T23-1: 成功 run 可编译 / 失败 run 不可编译 / legacy run 不可编译。
+  - T23-3: selector 不在 environment_profile 时拒绝。
+  - T23-10: 编译后生成 skill_history。
+  - T23-11: 编译后写入 skill_compilation episode。
+- **数据库模型补全**：应用迁移 `00036_add_compiled_from_task_run_id_and_skill_compilation_type.sql`，为 `skill_cards` 表增加 `compiled_from_task_run_id` 字段，并为 `episode_type` 枚举添加 `skill_compilation` 值，确保数据库模型与边缘函数一致。
+
+---
+
+## [v53.1] — 2026-05-19 · Milestone 12 补充：技能编译完整性
+
+### 变更内容
+- **skill_cards 添加 compiled_from_task_run_id**：跟踪技能卡的编译来源，支持可追溯性
+- **skill_history 初始版本写入**：编译成功后自动写入 skill_history 记录，version='1.0.0'，status='candidate'，changes_json 包含编译来源和 action sequence
+- **memory_episodes(type='skill_compilation')**：编译成功后自动写入记忆事件，title 包含技能卡名称，content_json 包含 skill_card_id / task_run_id / environment_profile_id / action_sequence / selector_validation
+- **拒绝条件完善**：
+  - task_run 失败时拒绝编译（HTTP 422）
+  - 缺少 step trace 时拒绝编译（HTTP 422）
+  - 缺少 environment_profile 时拒绝编译（HTTP 404/422）
+- **类型更新**：EpisodeType 新增 'skill_compilation'，SkillCard 新增 compiled_from_task_run_id
+- **前端适配**：MemoryPage EPISODE_TYPE_LABELS/ICONS/DETAIL_TITLES 均添加 skill_compilation 映射
+- **T23 测试扩展**：新增 T23-8 ~ T23-13，覆盖 compiled_from_task_run_id、完整字段集、skill_history、skill_compilation episode、拒绝条件
+
+---
+
+## [v53] — 2026-05-19 · Milestone 12: Gray Skill Compilation Integrity
+
+### 目标
+基于 environment_profile 和成功 task_run_steps，自动生成 candidate skill_card，实现从成功轨迹到灰质技能卡的编译闭环。
+
+### 变更内容
+- **新增 compile-gray-skill Edge Function**：接收 `{ task_id, task_run_id, environment_profile_id }`，完成以下编译流程：
+  1. 校验 task_run 必须 `status='success'` 且 `is_legacy_run=false`，否则返回 HTTP 422
+  2. 读取 `task_run_steps`，过滤只保留 `status='success'` 的步骤构成稳定 action sequence
+  3. 读取 `environment_profile`，构建 selector 索引（包含 selector_candidates 和属性推导）
+  4. 校验每个 step 的 `target_selector` 必须存在于 profile elements 中，否则返回详细的 `invalid_steps`
+  5. 生成 `skill_card`（status='candidate'）：
+     - `skill_id` 自动生成，基于任务名称
+     - `execution_surfaces` 从 steps 的 action_type 推导
+     - `tunable_params` 基于执行时间和步骤数量动态计算
+     - `safety.risk_level` 取 steps 中最高风险等级
+     - `metrics` 设置 success_rate=1.0, sample_count=1, avg_latency_ms 为实际执行时间
+     - `policy` 包含编译来源和动作序列摘要
+  6. 写入 `skill_cards` 表后，自动回写 `tasks.skill_card_id`
+- **前端 TasksPage 增加编译按钮**：在展开的成功非 legacy task_run 详情中，显示"编译为技能卡"按钮，点击后调用 `compile-gray-skill` Edge Function，成功后自动刷新任务列表
+- **T23 测试套件**：新增 7 个测试用例，覆盖编译条件校验、action sequence 提取、selector 验证、skill_card 状态与关联、execution_surfaces 推导、风险等级计算
+
+---
+
+## [v52] — 2026-05-19 · Milestone 11: 环境自举验证与白质层上下文融合
+
+### 目标
+完成 Milestone 11 最后阶段，将环境自举结果完整融入白质层失败分析流程，并通过验证器与测试完善整个自举链路的可靠性与可追溯性。
+
+### 变更内容
+- **白质层环境上下文融合**：`white-matter-analyze` Edge Function 现在检查 `environment_profile_id`，若存在则从 `environment_profiles` 表加载对应环境画像数据并注入到 LLM 分析的 user prompt 中。这使得白质层的根因推断能够结合目标页面的实际元素结构、可用执行面和风险分类信息，提升分析准确性。
+- **验证器策略覆盖**：在测试层面提供了一组模拟验证器，用于确保：(1) 选择器必须存在于自举扫描结果中；(2) 仅允许已注册的 adapter；(3) 仅允许预定义的 risk_level 列表（low/medium/high/forbidden）。
+- **T22 测试套件**：新增 T22 测试组（共 8 个用例），完整覆盖 Raw Scan 采集能力、Environment Profile 生成、验证器多层级校验、成功自举事件落盘 `memory_episodes`（type=environment_bootstrap）以及任务/技能卡与环境画像的绑定。
+
+---
+
+## [v52.1] — 2026-05-19 · Milestone 11 Phase 2 续：Validator + Memory Episode + Task 绑定
+
+### 变更内容
+- **新增 EnvironmentProfileValidator**：在 `bootstrap-environment` Edge Function 中实现完整的验证逻辑（V1–V7）：
+  - 校验 `perception_surfaces` / `execution_surfaces` / `feedback_surfaces` 不为空
+  - 校验 `recommended_adapters` 中的每个 adapter 必须在允许列表中
+  - 校验每个 `element.selector` 必须存在于其 `selector_candidates` 中
+  - 校验 `action_candidates` 中的每个 action 必须被系统支持
+  - 校验 `risk_level` 必须符合枚举值（low / medium / high / forbidden）
+  - 校验 `element.tag` 必须存在于原始扫描结果中
+  - 校验 `url` 和 `environment_type` 非空
+  - **验证失败返回 HTTP 422**，包含详细的 `validation_errors` 数组，拒绝写库
+- **保存成功后双写 memory_episodes**：验证通过后，除写入 `environment_profiles` 外，同时写入 `memory_episodes`：
+  - `type = 'environment_bootstrap'`
+  - `content_json` 包含 `raw_scan_id`、`environment_profile_id`、`white_matter_summary`
+  - `environment_profile_id` 外键关联
+  - `tags = ["bootstrap", "environment", "auto-generated"]`
+  - Episode 写入失败不影响主流程（仅打日志）
+- **扩展 episode_type 枚举**：数据库 ENUM 和 TypeScript `EpisodeType` 均新增 `'environment_bootstrap'`
+- **MemoryPage 适配**：`EPISODE_TYPE_LABELS`、`EPISODE_TYPE_ICONS`、`DETAIL_TITLES` 均添加 `environment_bootstrap` 映射
+- **Task 创建绑定 environment_profile_id**：`TasksPage` 已支持在创建任务时通过下拉选择绑定 `environment_profile_id`
+
+---
+
+## [v52] — 2026-05-19 · Milestone 11 Phase 2: 最小 Bootloader + 白质层推理分离
+
+### 目标
+将环境自举的**事实采集**与**复杂推理**分离为两个独立层次，使得 Bootloader 只负责原始数据收集，白质层负责推导环境画像草案，提高系统的单一职责原则与可维护性。
+
+### 变更内容
+- **新增 raw_environment_scans 表**：专门存储 Bootloader 产出的原始扫描结果，包含 URL、DOM、可见文本、截屏、控制台错误、原始元素列表 (`raw_elements`)。该表只含事实不含任何推理字段。
+- **重构 bootstrap-env 为最小 Bootloader**：移除所有推理逻辑（selector 生成、risk_level 推断、surfaces 判断、adapters 推荐），仅保留：Playwright 打开页面、等待 networkidle、扫描 DOM、提取 button/input/select/textarea/a/form/dialog 等元素的原始属性（text、role、name、placeholder、type、href、aria-label、data-testid、data-test、data-cy、id、class、title）。扫描结果写入 `raw_environment_scans` 表。
+- **新增 bootstrap-environment 白质层 Edge Function**：接收 `raw_scan_id`，读取 `raw_environment_scans` 中的原始数据，负责所有复杂推理：
+  - 判断 perception_surfaces（根据元素类型自动识别 dom、url、title、visible_text、form_fields、button_labels 等）
+  - 判断 execution_surfaces（根据标签自动识别 click、fill、select、wait、screenshot、navigate 等）
+  - 判断 feedback_surfaces（自动识别 url_change、dom_change、element_visible、validation_error 等）
+  - 为每个元素生成语义角色 (`semantic_role`)
+  - 生成 selector 候选 (`selector_candidates`)并按优先级排序（data-testid > aria-label > role+title > id > name > placeholder > text > CSS class > tag）
+  - 计算 `stable_selector_score`
+  - 推断 `action_candidates` 和 `risk_level`
+  - 推荐 `recommended_adapters`
+  - 将最终 `environment_profile` 保存至 `environment_profiles` 表
+- **前端调用链路更新**：`BootstrapPage.tsx` 的扫描流程现为两步式：先调用 `bootstrap-env` 获取原始扫描，再调用 `bootstrap-environment` 生成画像。扫描进度动画分别展示 Bootloader 阶段与白质层推理阶段的状态。
+- **RLS 与 Realtime 支持**：为 `raw_environment_scans` 表配置了行级安全策略和 Supabase Realtime 同步。
+
+---
+
 ## [v51] — 2026-05-19 · Milestone 11: 自举画像系统全链路关联（End of Milestone 11）
 
 ### 目标

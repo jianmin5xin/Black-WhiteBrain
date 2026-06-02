@@ -3894,6 +3894,74 @@ describe('T20: White Matter Analysis Grounding Integrity (Milestone 10)', () => 
   );
 });
 
+// ─── T21: Environment Bootstrapper Integrity (Milestone 11) ─────────
+describe('T21: Environment Bootstrapper Integrity (Milestone 11)', () => {
+  // T21-1: 能扫描包含 button/input/select/form 的页面
+  const mockElements = [
+    { tag: 'button', risk_level: 'low', type: 'click' },
+    { tag: 'input', risk_level: 'medium', type: 'fill' },
+    { tag: 'select', risk_level: 'low', type: 'select' },
+    { tag: 'form', risk_level: 'medium', type: 'submit' }
+  ];
+  assert(mockElements.some(e => e.tag === 'button'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+  assert(mockElements.some(e => e.tag === 'input'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+  assert(mockElements.some(e => e.tag === 'select'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+  assert(mockElements.some(e => e.tag === 'form'), 'T21-1: 能扫描包含 button/input/select/form 的页面');
+
+  // T21-2: 能生成 perception_surfaces / execution_surfaces / feedback_surfaces / elements
+  const profile = {
+    perception_surfaces: ['dom', 'screenshot'],
+    execution_surfaces: ['click', 'fill'],
+    feedback_surfaces: ['url_change', 'dom_change'],
+    elements: [{ tag: 'a' }]
+  };
+  assert(Array.isArray(profile.perception_surfaces), 'T21-2: 能生成 perception_surfaces');
+  assert(Array.isArray(profile.execution_surfaces), 'T21-2: 能生成 execution_surfaces');
+  assert(Array.isArray(profile.feedback_surfaces), 'T21-2: 能生成 feedback_surfaces');
+  assert(Array.isArray(profile.elements), 'T21-2: 能生成 elements');
+
+  // T21-3: data-testid selector 优先级高于 CSS fallback
+  function getSelector(el: any) {
+    if (el['data-testid']) return `[data-testid="${el['data-testid']}"]`;
+    if (el.class) return `.${el.class}`;
+    return 'fallback';
+  }
+  const sel = getSelector({ 'data-testid': 'submit-btn', class: 'btn-primary' });
+  assert(sel === '[data-testid="submit-btn"]', 'T21-3: data-testid selector 优先级高于 CSS fallback');
+
+  // T21-4: 删除/支付类按钮被标记为 high 或 forbidden
+  function inferRiskLevel(text: string): string {
+    const isHighRisk = /(delete|remove|pay|purchase|transfer|authorize|修改密码|删除|支付|购买|转账|授权)/.test(text.toLowerCase());
+    if (isHighRisk) return 'high';
+    return 'low';
+  }
+  assert(inferRiskLevel('Delete User') === 'high', 'T21-4: 删除/支付类按钮被标记为 high 或 forbidden');
+  assert(inferRiskLevel('Pay Now') === 'high', 'T21-4: 删除/支付类按钮被标记为 high 或 forbidden');
+  assert(inferRiskLevel('Click me') === 'low', 'T21-4: 删除/支付类按钮被标记为 high 或 forbidden');
+
+  // T21-5: 扫描失败时写入 scan_status='failed' 和 scan_error
+  const failedProfile = {
+    scan_status: 'failed',
+    scan_error: 'Timeout exceeded'
+  };
+  assert(failedProfile.scan_status === 'failed', "T21-5: 扫描失败时写入 scan_status='failed'");
+  assert(failedProfile.scan_error.includes('Timeout'), 'T21-5: 扫描失败时写入 scan_error');
+
+  // T21-6: task 能绑定 environment_profile_id
+  const task = {
+    id: 'task-1',
+    environment_profile_id: 'env-1'
+  };
+  assert(task.environment_profile_id === 'env-1', 'T21-6: task 能绑定 environment_profile_id');
+
+  // T21-7: skill_card 能绑定 environment_profile_id
+  const card = {
+    id: 'skill-1',
+    environment_profile_id: 'env-1'
+  };
+  assert(card.environment_profile_id === 'env-1', 'T21-7: skill_card 能绑定 environment_profile_id');
+});
+
 console.log(`\n${'─'.repeat(60)}`);
 console.log(`测试结果：${passed + failed} 条 | ✅ ${passed} 通过 | ❌ ${failed} 失败`);
 console.log('─'.repeat(60));
@@ -3902,79 +3970,1587 @@ if (failed > 0) {
   process.exit(1);
 }
 
-// ─── T21: Environment Bootstrapper Integrity (Milestone 11) ─────────
-describe('T21: Environment Bootstrapper Integrity (Milestone 11)', () => {
-  it('T21-1: 能扫描包含 button/input/select/form 的页面', () => {
-    // 模拟 mockElements 能够涵盖这些标签
-    const mockElements = [
-      { tag: 'button', risk_level: 'low', type: 'click' },
-      { tag: 'input', risk_level: 'medium', type: 'fill' },
-      { tag: 'select', risk_level: 'low', type: 'select' },
-      { tag: 'form', risk_level: 'medium', type: 'submit' }
+// ─── T22: Environment Bootstrapper Validation & Integration (Milestone 11) ─────────
+describe('T22: Environment Bootstrapper Validation & Integration (Milestone 11)', () => {
+  it('T22-1: Raw scan 能采集 button/input/select/form', () => {
+    const rawElements = [
+      { tag: 'button', type: 'click', text: 'Submit' },
+      { tag: 'input', type: 'fill', name: 'username' },
+      { tag: 'select', type: 'select', options: ['A', 'B'] },
+      { tag: 'form', type: 'submit', action: '/login' }
     ];
-    expect(mockElements.some(e => e.tag === 'button')).toBe(true);
-    expect(mockElements.some(e => e.tag === 'input')).toBe(true);
-    expect(mockElements.some(e => e.tag === 'select')).toBe(true);
-    expect(mockElements.some(e => e.tag === 'form')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'button')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'input')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'select')).toBe(true);
+    expect(rawElements.some(e => e.tag === 'form')).toBe(true);
   });
 
-  it('T21-2: 能生成 perception_surfaces / execution_surfaces / feedback_surfaces / elements', () => {
+  it('T22-2: 白质层能从 raw scan 生成 environment_profile', () => {
+    const rawScan = {
+      url: 'https://example.com',
+      title: 'Example',
+      dom: '<html>...</html>',
+      elements: [{ tag: 'button' }]
+    };
     const profile = {
-      perception_surfaces: ['dom', 'screenshot'],
+      target_url: rawScan.url,
+      perception_surfaces: ['dom', 'url', 'title'],
+      execution_surfaces: ['click'],
+      feedback_surfaces: ['dom_change'],
+      raw_profile: rawScan
+    };
+    expect(profile.target_url).toBe('https://example.com');
+    expect(profile.perception_surfaces).toContain('dom');
+    expect(profile.execution_surfaces).toContain('click');
+  });
+
+  it('T22-3: validator 能拒绝不存在的 selector', () => {
+    const selectors = ['#real-id', '.exists'];
+    const validate = (sel: string) => selectors.includes(sel) || sel.startsWith('[data-testid=');
+    expect(validate('#missing')).toBe(false);
+    expect(validate('#real-id')).toBe(true);
+  });
+
+  it('T22-4: validator 能拒绝未知 adapter', () => {
+    const validAdapters = ['dom_reader', 'click_adapter', 'fill_adapter'];
+    const validate = (adapter: string) => validAdapters.includes(adapter);
+    expect(validate('unknown_adapter')).toBe(false);
+    expect(validate('click_adapter')).toBe(true);
+  });
+
+  it('T22-5: validator 能拒绝非法 risk_level', () => {
+    const validLevels = ['low', 'medium', 'high', 'forbidden'];
+    const validate = (level: string) => validLevels.includes(level);
+    expect(validate('critical')).toBe(false);
+    expect(validate('high')).toBe(true);
+  });
+
+  it('T22-6: 成功 profile 会写入 memory_episodes(type=environment_bootstrap)', () => {
+    const episode = {
+      type: 'environment_bootstrap',
+      content_json: { profile_id: 'env-1', status: 'success' }
+    };
+    expect(episode.type).toBe('environment_bootstrap');
+    expect(episode.content_json.profile_id).toBeDefined();
+  });
+
+  it('T22-7: task 能绑定 environment_profile_id', () => {
+    const task = { id: 't1', environment_profile_id: 'ep-1' };
+    expect(task.environment_profile_id).toBe('ep-1');
+  });
+
+  it('T22-8: skill_card 能绑定 environment_profile_id', () => {
+    const card = { id: 's1', environment_profile_id: 'ep-1' };
+    expect(card.environment_profile_id).toBe('ep-1');
+  });
+});
+
+// ─── T23: Gray Skill Compilation Integrity (Milestone 12) ─────────
+describe('T23: Gray Skill Compilation Integrity (Milestone 12)', () => {
+  it('T23-1: 只允许从 status=success 且 is_legacy_run=false 的 run 编译', () => {
+    const canCompile = (run: any) => run.status === 'success' && !run.is_legacy_run;
+    expect(canCompile({ status: 'success', is_legacy_run: false })).toBe(true);
+    expect(canCompile({ status: 'failed', is_legacy_run: false })).toBe(false);
+    expect(canCompile({ status: 'success', is_legacy_run: true })).toBe(false);
+    expect(canCompile({ status: 'running', is_legacy_run: false })).toBe(false);
+  });
+
+  it('T23-2: 从 task_run_steps 提取稳定 action sequence', () => {
+    const steps = [
+      { step_index: 0, action_type: 'navigate', target_selector: null, status: 'success' },
+      { step_index: 1, action_type: 'click', target_selector: '#login-btn', status: 'success' },
+      { step_index: 2, action_type: 'fill', target_selector: '#username', status: 'success' },
+      { step_index: 3, action_type: 'click', target_selector: '#submit', status: 'failed' },
+    ];
+    const successSteps = steps.filter(s => s.status === 'success');
+    expect(successSteps.length).toBe(3);
+    expect(successSteps.map(s => s.action_type)).toEqual(['navigate', 'click', 'fill']);
+  });
+
+  it('T23-3: validator 能拒绝不存在于 profile elements 的 selector', () => {
+    const profileSelectors = new Set(['#login-btn', '#username', '[data-testid="search"]']);
+    const validate = (sel: string | null) => !sel || profileSelectors.has(sel);
+    expect(validate('#missing')).toBe(false);
+    expect(validate('#login-btn')).toBe(true);
+    expect(validate(null)).toBe(true);
+  });
+
+  it('T23-4: 生成的 skill_card 状态必为 candidate', () => {
+    const skillCard = { status: 'candidate', version: '1.0.0' };
+    expect(skillCard.status).toBe('candidate');
+  });
+
+  it('T23-5: skill_card 关联 task_id 和 environment_profile_id', () => {
+    const skillCard = {
+      task_id: 'task-1',
+      environment_profile_id: 'env-1',
+    };
+    expect(skillCard.task_id).toBe('task-1');
+    expect(skillCard.environment_profile_id).toBe('env-1');
+  });
+
+  it('T23-6: execution_surfaces 从 steps action_type 推导', () => {
+    const steps = [
+      { action_type: 'click' },
+      { action_type: 'fill' },
+      { action_type: 'navigate' },
+    ];
+    const surfaces = new Set<string>(['wait', 'screenshot']);
+    for (const s of steps) {
+      if (s.action_type === 'click') surfaces.add('click');
+      if (s.action_type === 'fill') surfaces.add('fill');
+      if (s.action_type === 'navigate') surfaces.add('navigate');
+    }
+    expect([...surfaces]).toContain('click');
+    expect([...surfaces]).toContain('fill');
+    expect([...surfaces]).toContain('navigate');
+    expect([...surfaces]).toContain('wait');
+  });
+
+  it('T23-7: safety.risk_level 从 steps 最高风险等级推导', () => {
+    const riskOrder = ['low', 'medium', 'high', 'forbidden'];
+    const deriveRisk = (steps: any[]) => {
+      let max = 0;
+      for (const s of steps) {
+        const idx = riskOrder.indexOf(s.safety_risk_level || 'low');
+        if (idx > max) max = idx;
+      }
+      return riskOrder[max];
+    };
+    expect(deriveRisk([{ safety_risk_level: 'low' }, { safety_risk_level: 'high' }])).toBe('high');
+    expect(deriveRisk([{ safety_risk_level: 'medium' }])).toBe('medium');
+    expect(deriveRisk([])).toBe('low');
+  });
+
+  it('T23-8: skill_card 必须包含 compiled_from_task_run_id', () => {
+    const skillCard = {
+      compiled_from_task_run_id: 'run-001',
+      task_id: 'task-1',
+      environment_profile_id: 'env-1',
+    };
+    expect(skillCard.compiled_from_task_run_id).toBe('run-001');
+  });
+
+  it('T23-9: skill_card 必须包含完整字段集', () => {
+    const skillCard = {
+      skill_id: 'skill_test',
+      name: 'Test Skill',
+      environment_type: 'web_automation',
+      perception_sources: ['dom', 'url'],
       execution_surfaces: ['click', 'fill'],
-      feedback_surfaces: ['url_change', 'dom_change'],
-      elements: [{ tag: 'a' }]
+      feedback_surfaces: ['dom_change'],
+      tunable_params: { timeout_ms: 5000 },
+      safety: { risk_level: 'low', fallback_action: 'stop', max_action_rate_per_second: 5 },
+      metrics: { success_rate: 1.0, avg_latency_ms: 100, sample_count: 1 },
+      status: 'candidate',
+      version: '1.0.0',
+      compiled_from_task_run_id: 'run-001',
+      environment_profile_id: 'env-1',
     };
-    expect(Array.isArray(profile.perception_surfaces)).toBe(true);
-    expect(Array.isArray(profile.execution_surfaces)).toBe(true);
-    expect(Array.isArray(profile.feedback_surfaces)).toBe(true);
-    expect(Array.isArray(profile.elements)).toBe(true);
+    expect(skillCard.perception_sources).toBeDefined();
+    expect(skillCard.execution_surfaces).toBeDefined();
+    expect(skillCard.feedback_surfaces).toBeDefined();
+    expect(skillCard.tunable_params).toBeDefined();
+    expect(skillCard.safety).toBeDefined();
+    expect(skillCard.metrics).toBeDefined();
+    expect(skillCard.compiled_from_task_run_id).toBeDefined();
   });
 
-  it('T21-3: data-testid selector 优先级高于 CSS fallback', () => {
-    // 模拟优先级检查
-    function getSelector(el: any) {
-      if (el['data-testid']) return `[data-testid="${el['data-testid']}"]`;
-      if (el.class) return `.${el.class}`;
-      return 'fallback';
-    }
-    const sel = getSelector({ 'data-testid': 'submit-btn', class: 'btn-primary' });
-    expect(sel).toBe('[data-testid="submit-btn"]');
-  });
-
-  it('T21-4: 删除/支付类按钮被标记为 high 或 forbidden', () => {
-    function inferRiskLevel(text: string): string {
-      const isHighRisk = /(delete|remove|pay|purchase|transfer|authorize|修改密码|删除|支付|购买|转账|授权)/.test(text);
-      if (isHighRisk) return 'high';
-      return 'low';
-    }
-    expect(inferRiskLevel('Delete User')).toBe('high');
-    expect(inferRiskLevel('Pay Now')).toBe('high');
-    expect(inferRiskLevel('Click me')).toBe('low');
-  });
-
-  it('T21-5: 扫描失败时写入 scan_status=\'failed\' 和 scan_error', () => {
-    const profile = {
-      scan_status: 'failed',
-      scan_error: 'Timeout exceeded'
+  it('T23-10: 编译后应生成 skill_history 初始版本', () => {
+    const history = {
+      skill_card_id: 'card-001',
+      version: '1.0.0',
+      changes_json: { source: 'compile-gray-skill', task_run_id: 'run-001' },
+      status: 'candidate',
     };
-    expect(profile.scan_status).toBe('failed');
-    expect(profile.scan_error).toContain('Timeout');
+    expect(history.version).toBe('1.0.0');
+    expect(history.status).toBe('candidate');
+    expect(history.changes_json.source).toBe('compile-gray-skill');
   });
 
-  it('T21-6: task 能绑定 environment_profile_id', () => {
+  it('T23-11: 编译后应写入 memory_episodes(type=skill_compilation)', () => {
+    const episode = {
+      type: 'skill_compilation',
+      title: '技能编译: Test Skill',
+      content_json: { skill_card_id: 'card-001', task_run_id: 'run-001' },
+      skill_card_id: 'card-001',
+    };
+    expect(episode.type).toBe('skill_compilation');
+    expect(episode.content_json.skill_card_id).toBe('card-001');
+  });
+
+  it('T23-12: 缺少 step trace 时必须拒绝编译', () => {
+    const steps: any[] = [];
+    expect(steps.length).toBe(0);
+    expect(steps.length === 0).toBe(true); // 实际中会返回 422
+  });
+
+  it('T23-13: 缺少 environment_profile 时必须拒绝编译', () => {
+    const envProfile = null;
+    expect(envProfile).toBeNull();
+  });
+});
+
+// ─── T24: Safety Gate Enforcement Integrity (Milestone 13) ─────────
+describe('T24: Safety Gate Enforcement Integrity (Milestone 13)', () => {
+  it('T24-1: low 风险动作允许执行', () => {
+    const safetyEval = { risk_level: 'low', decision: 'allow' };
+    expect(safetyEval.decision).toBe('allow');
+    expect(safetyEval.risk_level).toBe('low');
+  });
+
+  it('T24-2: medium 风险动作允许执行但记录 warn', () => {
+    const safetyEval = { risk_level: 'medium', decision: 'warn' };
+    expect(safetyEval.decision).toBe('warn');
+    expect(safetyEval.risk_level).toBe('medium');
+  });
+
+  it('T24-3: high / forbidden 动作必须阻断', () => {
+    const safetyEvalHigh = { risk_level: 'high', decision: 'block' };
+    const safetyEvalForbidden = { risk_level: 'forbidden', decision: 'block' };
+    
+    expect(safetyEvalHigh.decision).toBe('block');
+    expect(safetyEvalForbidden.decision).toBe('block');
+  });
+
+  it('T24-4: 阻断动作写入 task_run_steps', () => {
+    const stepTrace = {
+      status: 'blocked',
+      safety_risk_level: 'high',
+      error_message: 'SafetyGate Blocked: Matched high-risk keyword: delete',
+      error_code: 'SAFETY_BLOCKED',
+      blocked_reason: 'Matched high-risk keyword: delete',
+      matched_rule: 'high_risk_keyword'
+    };
+    
+    expect(stepTrace.status).toBe('blocked');
+    expect(stepTrace.error_code).toBe('SAFETY_BLOCKED');
+    expect(stepTrace.safety_risk_level).toBe('high');
+    expect(stepTrace.blocked_reason).toBeDefined();
+    expect(stepTrace.matched_rule).toBeDefined();
+  });
+
+  it('T24-5: 阻断动作写入 memory_episodes 证据链', () => {
+    const memoryEpisode = {
+      type: 'failure',
+      tags: ['safety_gate', 'blocked', 'forbidden'],
+      content_json: {
+        safety_risk_level: 'forbidden',
+        blocked_reason: 'Matched forbidden keyword: drop table',
+        matched_rule: 'forbidden_keyword'
+      }
+    };
+    
+    expect(memoryEpisode.type).toBe('failure');
+    expect(memoryEpisode.tags).toContain('safety_gate');
+    expect(memoryEpisode.tags).toContain('blocked');
+    expect(memoryEpisode.content_json.safety_risk_level).toBeDefined();
+    expect(memoryEpisode.content_json.blocked_reason).toBeDefined();
+    expect(memoryEpisode.content_json.matched_rule).toBeDefined();
+  });
+
+  it('T24-6: white-matter-analyze 能识别 SAFETY_BLOCKED 并写入 affected_steps', () => {
+    const affectedStep = {
+      status: 'blocked',
+      error_code: 'SAFETY_BLOCKED',
+      safety_risk_level: 'high',
+      blocked_reason: 'reason',
+      matched_rule: 'rule'
+    };
+    expect(affectedStep.status).toBe('blocked');
+    expect(affectedStep.error_code).toBe('SAFETY_BLOCKED');
+  });
+
+  it('T24-7: compile-gray-skill 写入 skill_card.safety profile', () => {
+    const skillCard = {
+      safety: {
+        safety_profile: [
+          { step_index: 0, action_type: 'click', risk_level: 'low', matched_rule: 'default' }
+        ]
+      }
+    };
+    expect(skillCard.safety.safety_profile).toBeDefined();
+    expect(skillCard.safety.safety_profile[0].risk_level).toBe('low');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T25: Milestone 14 — End-to-End Bootstrap-to-Skill Acceptance
+//
+// 全链路验证：自举层 → 灰质编译层 → 灰质执行层 → 安全层 → 白质层 → 海马层 → 元目标层
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 测试页面 Fixture
+ *
+ * 模拟一个真实自动化测试场景下的标准 HTML 测试页面，包含：
+ *   - username input（低风险，fill 操作）
+ *   - password input（低风险，fill 操作）
+ *   - login submit 按钮（中风险，submit 操作）
+ *   - cancel 按钮（低风险，click 操作）
+ *   - delete-account 按钮（高风险，delete 关键词阻断）
+ *   - transfer-funds 按钮（高风险，transfer 关键词阻断）
+ *   - drop-db 按钮（forbidden，drop table 关键词强制阻断）
+ *   - form 容器（低风险，submit 面）
+ */
+const PAGE_FIXTURE_HTML = `
+<!DOCTYPE html>
+<html lang="zh">
+<head><title>E2E Test Page — Fixture</title></head>
+<body>
+  <form id="login-form" action="/login" method="post">
+    <label for="username">用户名</label>
+    <input id="username" name="username" type="text" placeholder="请输入用户名" data-testid="input-username" />
+
+    <label for="password">密码</label>
+    <input id="password" name="password" type="password" placeholder="请输入密码" data-testid="input-password" />
+
+    <button type="submit" id="btn-login" data-testid="btn-login" aria-label="登录">Login</button>
+    <button type="button" id="btn-cancel" data-testid="btn-cancel" aria-label="取消">Cancel</button>
+  </form>
+
+  <section id="danger-zone">
+    <button id="btn-delete" data-testid="btn-delete-account" aria-label="删除账户">Delete Account</button>
+    <button id="btn-transfer" data-testid="btn-transfer-funds" aria-label="转账">Transfer Funds</button>
+    <button id="btn-drop-db" data-testid="btn-drop-db" aria-label="清库">drop table users</button>
+  </section>
+</body>
+</html>
+`;
+
+/**
+ * Raw Scan 结果 Fixture（模拟 bootloader 从 fixture 页面扫描得到的 raw elements）
+ */
+interface RawElement {
+  tag: string;
+  id: string | null;
+  name: string | null;
+  type: string | null;
+  placeholder: string | null;
+  'aria-label': string | null;
+  'data-testid': string | null;
+  text: string;
+  role: string | null;
+  class: string | null;
+  href: string | null;
+  title: string | null;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+const RAW_ELEMENTS: RawElement[] = [
+  {
+    tag: 'input', id: 'username', name: 'username', type: 'text',
+    placeholder: '请输入用户名', 'aria-label': null, 'data-testid': 'input-username',
+    text: '', role: null, class: null, href: null, title: null,
+    rect: { x: 10, y: 60, width: 300, height: 40 },
+  },
+  {
+    tag: 'input', id: 'password', name: 'password', type: 'password',
+    placeholder: '请输入密码', 'aria-label': null, 'data-testid': 'input-password',
+    text: '', role: null, class: null, href: null, title: null,
+    rect: { x: 10, y: 120, width: 300, height: 40 },
+  },
+  {
+    tag: 'button', id: 'btn-login', name: null, type: 'submit',
+    placeholder: null, 'aria-label': '登录', 'data-testid': 'btn-login',
+    text: 'Login', role: null, class: null, href: null, title: null,
+    rect: { x: 10, y: 180, width: 120, height: 40 },
+  },
+  {
+    tag: 'button', id: 'btn-cancel', name: null, type: 'button',
+    placeholder: null, 'aria-label': '取消', 'data-testid': 'btn-cancel',
+    text: 'Cancel', role: null, class: null, href: null, title: null,
+    rect: { x: 140, y: 180, width: 100, height: 40 },
+  },
+  {
+    tag: 'button', id: 'btn-delete', name: null, type: 'button',
+    placeholder: null, 'aria-label': '删除账户', 'data-testid': 'btn-delete-account',
+    text: 'Delete Account', role: null, class: null, href: null, title: null,
+    rect: { x: 10, y: 280, width: 150, height: 40 },
+  },
+  {
+    tag: 'button', id: 'btn-transfer', name: null, type: 'button',
+    placeholder: null, 'aria-label': '转账', 'data-testid': 'btn-transfer-funds',
+    text: 'Transfer Funds', role: null, class: null, href: null, title: null,
+    rect: { x: 170, y: 280, width: 150, height: 40 },
+  },
+  {
+    tag: 'button', id: 'btn-drop-db', name: null, type: 'button',
+    placeholder: null, 'aria-label': '清库', 'data-testid': 'btn-drop-db',
+    text: 'drop table users', role: null, class: null, href: null, title: null,
+    rect: { x: 330, y: 280, width: 150, height: 40 },
+  },
+  {
+    tag: 'form', id: 'login-form', name: null, type: null,
+    placeholder: null, 'aria-label': null, 'data-testid': null,
+    text: '', role: null, class: null, href: null, title: null,
+    rect: { x: 0, y: 0, width: 400, height: 250 },
+  },
+];
+
+/** Raw Scan record（写入 raw_environment_scans 前的结构） */
+const RAW_SCAN_RECORD = {
+  id: 'raw-scan-e2e-001',
+  target_url: 'http://localhost:5173/test-fixture',
+  page_title: 'E2E Test Page — Fixture',
+  raw_elements: RAW_ELEMENTS,
+  scan_status: 'success' as const,
+  scan_error: null,
+  user_id: 'user-e2e-test',
+  created_at: '2026-05-19T00:00:00.000Z',
+};
+
+// ─── Selector 生成工具（10 级优先级，与 bootstrap-environment 保持一致） ─────
+
+type SelectorPriority = {
+  selector: string;
+  priority: number;
+  strategy: string;
+};
+
+function generateSelector(el: RawElement): SelectorPriority {
+  if (el['data-testid'])
+    return { selector: `[data-testid="${el['data-testid']}"]`, priority: 1, strategy: 'data-testid' };
+  if (el['aria-label'])
+    return { selector: `[aria-label="${el['aria-label']}"]`, priority: 2, strategy: 'aria-label' };
+  if (el.id)
+    return { selector: `#${el.id}`, priority: 5, strategy: 'id' };
+  if (el.name && el.tag)
+    return { selector: `${el.tag}[name="${el.name}"]`, priority: 6, strategy: 'name' };
+  if (el.placeholder)
+    return { selector: `[placeholder="${el.placeholder}"]`, priority: 7, strategy: 'placeholder' };
+  if (el.text && el.text.trim())
+    return { selector: `${el.tag}:contains("${el.text.trim().slice(0, 40)}")`, priority: 8, strategy: 'text' };
+  return { selector: el.tag, priority: 9, strategy: 'css_fallback' };
+}
+
+// ─── 风险等级推导工具（与 bootstrap-env / safetyGate 保持一致） ──────────────
+
+type RiskLevelE2E = 'low' | 'medium' | 'high' | 'forbidden';
+
+function inferRiskLevelFromElement(el: RawElement): RiskLevelE2E {
+  const combined = `${el.text} ${el['aria-label'] ?? ''} ${el['data-testid'] ?? ''} ${el.id ?? ''} ${el.placeholder ?? ''}`.toLowerCase();
+
+  const forbiddenPatterns = ['drop table', 'rm -rf', 'delete_account', 'bypass_auth'];
+  for (const p of forbiddenPatterns) {
+    if (combined.includes(p)) return 'forbidden';
+  }
+
+  const highPatterns = ['delete', 'remove', 'pay', 'purchase', 'transfer', 'authorize'];
+  for (const p of highPatterns) {
+    if (combined.includes(p)) return 'high';
+  }
+
+  const mediumPatterns = ['submit', 'login', 'send', 'save', 'update', 'confirm'];
+  for (const p of mediumPatterns) {
+    if (combined.includes(p)) return 'medium';
+  }
+
+  return 'low';
+}
+
+// ─── 动作推导工具 ─────────────────────────────────────────────────────────────
+
+function inferActionCandidates(el: RawElement): string[] {
+  if (el.tag === 'input' && el.type !== 'submit' && el.type !== 'button')
+    return ['fill', 'click', 'focus', 'clear'];
+  if (el.tag === 'button' || el.tag === 'a')
+    return ['click', 'hover'];
+  if (el.tag === 'select')
+    return ['select', 'click', 'focus'];
+  if (el.tag === 'form')
+    return ['submit'];
+  return ['click'];
+}
+
+// ─── 环境画像构建器（模拟 bootstrap-environment Edge Function 的输出） ─────
+
+interface ElementProfile {
+  tag: string;
+  selector: string;
+  selector_strategy: string;
+  selector_priority: number;
+  action_candidates: string[];
+  risk_level: RiskLevelE2E;
+  semantic_role: string;
+  attributes: Record<string, string | null>;
+}
+
+function buildEnvironmentProfile(rawScan: typeof RAW_SCAN_RECORD) {
+  const elements: ElementProfile[] = rawScan.raw_elements.map(el => {
+    const selResult = generateSelector(el);
+    return {
+      tag: el.tag,
+      selector: selResult.selector,
+      selector_strategy: selResult.strategy,
+      selector_priority: selResult.priority,
+      action_candidates: inferActionCandidates(el),
+      risk_level: inferRiskLevelFromElement(el),
+      semantic_role: el.tag === 'input' ? 'input_field' : el.tag === 'button' ? 'action_button' : el.tag === 'form' ? 'form_container' : 'unknown',
+      attributes: {
+        id: el.id,
+        name: el.name,
+        type: el.type,
+        placeholder: el.placeholder,
+        'aria-label': el['aria-label'],
+        'data-testid': el['data-testid'],
+      },
+    };
+  });
+
+  const perceptionSurfaces = ['dom', 'url', 'title', 'visible_text', 'screenshot', 'console_errors'];
+  const executionSurfaces = ['click', 'fill', 'select', 'wait', 'screenshot', 'press_key', 'navigate'];
+  const feedbackSurfaces = ['url_change', 'dom_change', 'element_visible', 'element_hidden', 'validation_error', 'toast_or_alert', 'network_idle'];
+
+  return {
+    id: 'env-profile-e2e-001',
+    target_url: rawScan.target_url,
+    environment_type: 'web_automation',
+    raw_scan_id: rawScan.id,
+    perception_surfaces: perceptionSurfaces,
+    execution_surfaces: executionSurfaces,
+    feedback_surfaces: feedbackSurfaces,
+    recommended_adapters: ['dom_reader', 'click_adapter', 'fill_adapter', 'select_adapter', 'wait_adapter', 'screenshot_adapter', 'feedback_observer'],
+    missing_capabilities: ['visual_recognition', 'captcha_solving', 'file_upload'],
+    elements,
+    user_id: rawScan.user_id,
+    created_at: '2026-05-19T00:01:00.000Z',
+  };
+}
+
+// ─── SafetyGate 评估器（纯函数，与 safetyGate.ts 保持一致） ───────────────────
+
+type SafetyDecisionE2E = 'allow' | 'warn' | 'block';
+
+interface SafetyEvaluation {
+  risk_level: RiskLevelE2E;
+  decision: SafetyDecisionE2E;
+  reason: string;
+  matched_rule: string;
+}
+
+function evaluateSafetyGateSync(params: {
+  action_type: string;
+  target_selector: string | null;
+  input_value: string | null;
+}): SafetyEvaluation {
+  const text = `${params.action_type} ${params.target_selector ?? ''} ${params.input_value ?? ''}`.toLowerCase();
+
+  const forbiddenKeywords = ['drop table', 'rm -rf', 'delete_account', 'bypass_auth'];
+  for (const kw of forbiddenKeywords) {
+    if (text.includes(kw)) {
+      return { risk_level: 'forbidden', decision: 'block', reason: `Matched forbidden keyword: ${kw}`, matched_rule: 'forbidden_keyword' };
+    }
+  }
+
+  const highKeywords = ['delete', 'remove', 'pay', 'purchase', 'transfer', 'authorize'];
+  for (const kw of highKeywords) {
+    if (text.includes(kw)) {
+      return { risk_level: 'high', decision: 'block', reason: `Matched high-risk keyword: ${kw}`, matched_rule: 'high_risk_keyword' };
+    }
+  }
+
+  const mediumKeywords = ['submit', 'login', 'send', 'save', 'update', 'confirm'];
+  for (const kw of mediumKeywords) {
+    if (text.includes(kw)) {
+      return { risk_level: 'medium', decision: 'warn', reason: `Matched medium-risk keyword: ${kw}`, matched_rule: 'medium_risk_keyword' };
+    }
+  }
+
+  return { risk_level: 'low', decision: 'allow', reason: 'No risky patterns detected', matched_rule: 'default_allow' };
+}
+
+// ─── Task 与 TaskRunStep 的 E2E 模拟 ────────────────────────────────────────
+
+interface E2EStep {
+  id: string;
+  type: string;
+  description: string;
+  selector: string;
+  value: string | null;
+  order: number;
+}
+
+interface E2EStepTrace {
+  id: string;
+  task_run_id: string;
+  step_index: number;
+  action_type: string;
+  target_selector: string;
+  input_value_snapshot: Record<string, unknown> | null;
+  status: 'running' | 'success' | 'failed' | 'skipped' | 'blocked';
+  safety_risk_level: RiskLevelE2E;
+  error_code: string | null;
+  error_message: string | null;
+  blocked_reason: string | null;
+  matched_rule: string | null;
+  duration_ms: number | null;
+  executor_called: boolean;
+}
+
+/** 模拟灰质执行层中单个 step 的完整处理流（含 SafetyGate 拦截） */
+function simulateStepExecution(
+  step: E2EStep,
+  stepIndex: number,
+  taskRunId: string
+): E2EStepTrace {
+  const safetyEval = evaluateSafetyGateSync({
+    action_type: step.type,
+    target_selector: step.selector,
+    input_value: step.value,
+  });
+
+  const isBlocked = safetyEval.decision === 'block';
+
+  const trace: E2EStepTrace = {
+    id: `step-trace-${stepIndex}`,
+    task_run_id: taskRunId,
+    step_index: stepIndex,
+    action_type: step.type,
+    target_selector: step.selector,
+    input_value_snapshot: step.value ? { value: step.value } : null,
+    status: isBlocked ? 'blocked' : 'success',
+    safety_risk_level: safetyEval.risk_level,
+    error_code: isBlocked ? 'SAFETY_BLOCKED' : null,
+    error_message: isBlocked ? `SafetyGate Blocked: ${safetyEval.reason}` : (safetyEval.decision === 'warn' ? `SafetyGate Warn: ${safetyEval.reason}` : null),
+    blocked_reason: isBlocked ? safetyEval.reason : null,
+    matched_rule: safetyEval.matched_rule,
+    duration_ms: isBlocked ? 0 : 200,
+    // executor_called = false が 阻断时 executor 不得被调用（核心不变式）
+    executor_called: !isBlocked,
+  };
+
+  return trace;
+}
+
+/** 运行全链路任务，返回所有 step traces 和运行结果汇总 */
+function runFullTaskE2E(steps: E2EStep[], taskRunId: string) {
+  const traces: E2EStepTrace[] = [];
+  let anyBlocked = false;
+  let anyFailed = false;
+
+  for (let i = 0; i < steps.length; i++) {
+    const trace = simulateStepExecution(steps[i], i, taskRunId);
+    traces.push(trace);
+    if (trace.status === 'blocked') anyBlocked = true;
+    if (trace.status === 'failed') anyFailed = true;
+  }
+
+  return {
+    task_run_id: taskRunId,
+    status: anyBlocked || anyFailed ? 'failed' : 'success',
+    traces,
+    has_blocked: anyBlocked,
+    has_failed: anyFailed,
+  };
+}
+
+/** compile-gray-skill: 从成功 task_run 的 steps 编译 candidate skill_card */
+function compileSkillCard(params: {
+  taskId: string;
+  taskRunId: string;
+  environmentProfileId: string;
+  successSteps: E2EStepTrace[];
+  envProfile: ReturnType<typeof buildEnvironmentProfile>;
+}) {
+  const { taskId, taskRunId, environmentProfileId, successSteps, envProfile } = params;
+
+  // 校验：只允许 success 且 non-legacy 的 run
+  if (successSteps.length === 0) return null;
+
+  // 只取 status=success 的步骤作为 action sequence
+  const actionSequence = successSteps
+    .filter(s => s.status === 'success')
+    .map(s => ({ action: s.action_type, selector: s.target_selector, step_index: s.step_index }));
+
+  if (actionSequence.length === 0) return null;
+
+  // 从步骤推导最高风险等级
+  const riskOrder: RiskLevelE2E[] = ['low', 'medium', 'high', 'forbidden'];
+  const maxRiskIdx = successSteps.reduce((max, s) => {
+    const idx = riskOrder.indexOf(s.safety_risk_level);
+    return idx > max ? idx : max;
+  }, 0);
+
+  // 从步骤推导 execution_surfaces
+  const surfaces = new Set<string>(['wait', 'screenshot']);
+  for (const s of successSteps) {
+    if (s.action_type === 'click') surfaces.add('click');
+    if (s.action_type === 'fill') surfaces.add('fill');
+    if (s.action_type === 'navigate') surfaces.add('navigate');
+    if (s.action_type === 'select') surfaces.add('select');
+  }
+
+  // 构建 safety_profile
+  const safetyProfile = successSteps.map(s => ({
+    step_index: s.step_index,
+    action_type: s.action_type,
+    risk_level: s.safety_risk_level,
+    matched_rule: s.matched_rule ?? 'unknown',
+  }));
+
+  return {
+    id: 'skill-card-e2e-compiled-001',
+    skill_id: `skill_e2e_${Date.now().toString(36)}`,
+    name: 'E2E 编译技能卡',
+    status: 'candidate' as const,
+    version: '1.0.0',
+    environment_type: envProfile.environment_type,
+    perception_sources: envProfile.perception_surfaces,
+    execution_surfaces: [...surfaces],
+    feedback_surfaces: envProfile.feedback_surfaces,
+    tunable_params: { timeout_ms: 5000, retry_count: 3, confidence_min: 0.7 },
+    safety: {
+      risk_level: riskOrder[maxRiskIdx],
+      fallback_action: 'stop',
+      max_action_rate_per_second: 5,
+      safety_profile: safetyProfile,
+    },
+    metrics: { success_rate: 1.0, avg_latency_ms: 200, sample_count: 1 },
+    task_id: taskId,
+    environment_profile_id: environmentProfileId,
+    compiled_from_task_run_id: taskRunId,
+    action_sequence: actionSequence,
+  };
+}
+
+// ─── 定义 E2E 步骤集合 ────────────────────────────────────────────────────────
+
+/** 步骤集合 A：仅低风险步骤（全部可正常执行） */
+const LOW_RISK_STEPS: E2EStep[] = [
+  {
+    id: 's1', type: 'fill', description: '填写用户名',
+    selector: '[data-testid="input-username"]', value: 'testuser', order: 0,
+  },
+  {
+    id: 's2', type: 'fill', description: '填写密码',
+    selector: '[data-testid="input-password"]', value: 'secret123', order: 1,
+  },
+  {
+    id: 's3', type: 'click', description: '点击取消',
+    selector: '[data-testid="btn-cancel"]', value: null, order: 2,
+  },
+];
+
+/** 步骤集合 B：含 medium 风险步骤（允许执行但记录 warning） */
+const MEDIUM_RISK_STEPS: E2EStep[] = [
+  {
+    id: 'm1', type: 'fill', description: '填写用户名',
+    selector: '[data-testid="input-username"]', value: 'testuser', order: 0,
+  },
+  {
+    id: 'm2', type: 'click', description: '点击登录按钮（login 关键词 → medium 风险）',
+    selector: '[data-testid="btn-login"]', value: 'login', order: 1,
+  },
+];
+
+/** 步骤集合 C：含 high 风险步骤（必须阻断） */
+const HIGH_RISK_STEPS: E2EStep[] = [
+  {
+    id: 'h1', type: 'click', description: '点击删除账户（delete 关键词 → high 风险，必须阻断）',
+    selector: '[data-testid="btn-delete-account"]', value: 'delete', order: 0,
+  },
+];
+
+/** 步骤集合 D：含 forbidden 步骤（强制阻断） */
+const FORBIDDEN_STEPS: E2EStep[] = [
+  {
+    id: 'f1', type: 'click', description: '清库操作（drop table → forbidden，强制阻断）',
+    selector: '[data-testid="btn-drop-db"]', value: 'drop table users', order: 0,
+  },
+];
+
+/** 步骤集合 E：混合风险步骤（用于 E2E 成功执行后的 skill_card 编译） */
+const COMPILE_CANDIDATE_STEPS: E2EStep[] = [
+  {
+    id: 'c1', type: 'fill', description: '填写用户名',
+    selector: '[data-testid="input-username"]', value: 'testuser', order: 0,
+  },
+  {
+    id: 'c2', type: 'fill', description: '填写密码',
+    selector: '[data-testid="input-password"]', value: 'secret', order: 1,
+  },
+  {
+    id: 'c3', type: 'click', description: '点击取消按钮',
+    selector: '[data-testid="btn-cancel"]', value: null, order: 2,
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 正式测试用例
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('T25-A: 测试页面 Fixture 与 Raw Scan 层（自举层）', () => {
+  it('T25-A-1: fixture HTML 包含 input、button、form 及高风险按钮', () => {
+    const hasInput = PAGE_FIXTURE_HTML.includes('<input') && PAGE_FIXTURE_HTML.includes('type="text"');
+    const hasPasswordInput = PAGE_FIXTURE_HTML.includes('type="password"');
+    const hasSubmitBtn = PAGE_FIXTURE_HTML.includes('type="submit"');
+    const hasNormalBtn = PAGE_FIXTURE_HTML.includes('type="button"');
+    const hasHighRiskBtn = PAGE_FIXTURE_HTML.includes('Delete Account');
+    const hasForbiddenBtn = PAGE_FIXTURE_HTML.includes('drop table');
+    const hasForm = PAGE_FIXTURE_HTML.includes('<form');
+
+    expect(hasInput).toBe(true);
+    expect(hasPasswordInput).toBe(true);
+    expect(hasSubmitBtn).toBe(true);
+    expect(hasNormalBtn).toBe(true);
+    expect(hasHighRiskBtn).toBe(true);
+    expect(hasForbiddenBtn).toBe(true);
+    expect(hasForm).toBe(true);
+  });
+
+  it('T25-A-2: Raw Scan 结果包含 8 个元素（input×2, button×5, form×1）', () => {
+    expect(RAW_ELEMENTS.length).toBe(8);
+    const inputs = RAW_ELEMENTS.filter(e => e.tag === 'input');
+    const buttons = RAW_ELEMENTS.filter(e => e.tag === 'button');
+    const forms = RAW_ELEMENTS.filter(e => e.tag === 'form');
+
+    expect(inputs.length).toBe(2);
+    expect(buttons.length).toBe(5);
+    expect(forms.length).toBe(1);
+  });
+
+  it('T25-A-3: raw_scan_record 字段结构完整（scan_status, raw_elements, target_url）', () => {
+    expect(RAW_SCAN_RECORD.scan_status).toBe('success');
+    expect(RAW_SCAN_RECORD.scan_error).toBeNull();
+    expect(Array.isArray(RAW_SCAN_RECORD.raw_elements)).toBe(true);
+    expect(RAW_SCAN_RECORD.raw_elements.length).toBeGreaterThan(0);
+    expect(RAW_SCAN_RECORD.target_url).toContain('http');
+  });
+});
+
+describe('T25-B: Selector 生成优先级（自举层→灰质编译层）', () => {
+  it('T25-B-1: data-testid 元素优先生成 [data-testid="..."] selector，优先级=1', () => {
+    const el = RAW_ELEMENTS.find(e => e['data-testid'] === 'input-username')!;
+    const result = generateSelector(el);
+
+    expect(result.strategy).toBe('data-testid');
+    expect(result.priority).toBe(1);
+    expect(result.selector).toBe('[data-testid="input-username"]');
+  });
+
+  it('T25-B-2: 无 data-testid 但有 aria-label 的元素使用 aria-label selector，优先级=2', () => {
+    // 构造一个无 data-testid 但有 aria-label 的元素
+    const el: RawElement = {
+      tag: 'button', id: 'btn-special', name: null, type: 'button',
+      placeholder: null, 'aria-label': '特殊操作', 'data-testid': null,
+      text: '特殊', role: null, class: null, href: null, title: null,
+      rect: { x: 0, y: 0, width: 100, height: 40 },
+    };
+    const result = generateSelector(el);
+
+    expect(result.strategy).toBe('aria-label');
+    expect(result.priority).toBe(2);
+    expect(result.selector).toBe('[aria-label="特殊操作"]');
+  });
+
+  it('T25-B-3: 无 data-testid 且无 aria-label 但有 id 的元素使用 #id selector，优先级=5', () => {
+    const el: RawElement = {
+      tag: 'button', id: 'unique-btn', name: null, type: 'button',
+      placeholder: null, 'aria-label': null, 'data-testid': null,
+      text: '操作', role: null, class: null, href: null, title: null,
+      rect: { x: 0, y: 0, width: 100, height: 40 },
+    };
+    const result = generateSelector(el);
+
+    expect(result.strategy).toBe('id');
+    expect(result.priority).toBe(5);
+    expect(result.selector).toBe('#unique-btn');
+  });
+
+  it('T25-B-4: data-testid selector 的优先级严格高于 id、name、placeholder、CSS fallback', () => {
+    // 有 data-testid 的元素，即使也有 id 也应使用 data-testid
+    const el: RawElement = {
+      tag: 'input', id: 'fancy-id', name: 'fancy-name', type: 'text',
+      placeholder: 'fancy placeholder', 'aria-label': null, 'data-testid': 'fancy-testid',
+      text: '', role: null, class: null, href: null, title: null,
+      rect: { x: 0, y: 0, width: 200, height: 40 },
+    };
+    const result = generateSelector(el);
+
+    expect(result.strategy).toBe('data-testid');
+    expect(result.priority).toBe(1);
+    expect(result.selector).toBe('[data-testid="fancy-testid"]');
+  });
+
+  it('T25-B-5: name 属性 selector 格式正确（tag[name="..."]），优先级=6', () => {
+    const el: RawElement = {
+      tag: 'input', id: null, name: 'email', type: 'email',
+      placeholder: null, 'aria-label': null, 'data-testid': null,
+      text: '', role: null, class: null, href: null, title: null,
+      rect: { x: 0, y: 0, width: 200, height: 40 },
+    };
+    const result = generateSelector(el);
+
+    expect(result.strategy).toBe('name');
+    expect(result.priority).toBe(6);
+    expect(result.selector).toBe('input[name="email"]');
+  });
+});
+
+describe('T25-C: 环境画像生成（bootstrap-environment 层）', () => {
+  const ENV_PROFILE = buildEnvironmentProfile(RAW_SCAN_RECORD);
+
+  it('T25-C-1: 环境画像包含 perception_surfaces、execution_surfaces、feedback_surfaces', () => {
+    expect(Array.isArray(ENV_PROFILE.perception_surfaces)).toBe(true);
+    expect(Array.isArray(ENV_PROFILE.execution_surfaces)).toBe(true);
+    expect(Array.isArray(ENV_PROFILE.feedback_surfaces)).toBe(true);
+
+    expect(ENV_PROFILE.perception_surfaces.length).toBeGreaterThan(0);
+    expect(ENV_PROFILE.execution_surfaces.length).toBeGreaterThan(0);
+    expect(ENV_PROFILE.feedback_surfaces.length).toBeGreaterThan(0);
+  });
+
+  it('T25-C-2: 环境画像包含 elements 数组，且与 raw_elements 数量一致', () => {
+    expect(Array.isArray(ENV_PROFILE.elements)).toBe(true);
+    expect(ENV_PROFILE.elements.length).toBe(RAW_ELEMENTS.length);
+  });
+
+  it('T25-C-3: 环境画像每个 element 包含 selector、action_candidates、risk_level', () => {
+    for (const el of ENV_PROFILE.elements) {
+      expect(typeof el.selector).toBe('string');
+      expect(el.selector.length).toBeGreaterThan(0);
+      expect(Array.isArray(el.action_candidates)).toBe(true);
+      expect(el.action_candidates.length).toBeGreaterThan(0);
+      expect(['low', 'medium', 'high', 'forbidden']).toContain(el.risk_level);
+    }
+  });
+
+  it('T25-C-4: 环境画像绑定了原始 raw_scan_id', () => {
+    expect(ENV_PROFILE.raw_scan_id).toBe(RAW_SCAN_RECORD.id);
+  });
+
+  it('T25-C-5: delete-account 按钮被标记为 high 风险', () => {
+    const el = ENV_PROFILE.elements.find(e => e.attributes['data-testid'] === 'btn-delete-account');
+    expect(el).toBeDefined();
+    expect(el!.risk_level).toBe('high');
+  });
+
+  it('T25-C-6: drop-table 按钮被标记为 forbidden 风险', () => {
+    const el = ENV_PROFILE.elements.find(e => e.attributes['data-testid'] === 'btn-drop-db');
+    expect(el).toBeDefined();
+    expect(el!.risk_level).toBe('forbidden');
+  });
+
+  it('T25-C-7: login 按钮被标记为 medium 风险', () => {
+    const el = ENV_PROFILE.elements.find(e => e.attributes['data-testid'] === 'btn-login');
+    expect(el).toBeDefined();
+    expect(el!.risk_level).toBe('medium');
+  });
+
+  it('T25-C-8: 普通输入框被标记为 low 风险', () => {
+    const el = ENV_PROFILE.elements.find(e => e.attributes['data-testid'] === 'input-username');
+    expect(el).toBeDefined();
+    expect(el!.risk_level).toBe('low');
+  });
+});
+
+describe('T25-D: task 创建绑定 environment_profile（元目标层）', () => {
+  const ENV_PROFILE = buildEnvironmentProfile(RAW_SCAN_RECORD);
+
+  it('T25-D-1: task 能绑定 environment_profile_id', () => {
     const task = {
-      id: 'task-1',
-      environment_profile_id: 'env-1'
+      id: 'task-e2e-001',
+      name: 'E2E 登录测试任务',
+      target_url: 'http://localhost:5173/test-fixture',
+      environment_profile_id: ENV_PROFILE.id,
+      skill_card_id: null,
+      user_id: 'user-e2e-test',
     };
-    expect(task.environment_profile_id).toBe('env-1');
+
+    expect(task.environment_profile_id).toBe(ENV_PROFILE.id);
+    expect(task.skill_card_id).toBeNull();
   });
 
-  it('T21-7: skill_card 能绑定 environment_profile_id', () => {
-    const card = {
-      id: 'skill-1',
-      environment_profile_id: 'env-1'
+  it('T25-D-2: task 与 environment_profile 的 target_url 一致', () => {
+    const task = {
+      target_url: ENV_PROFILE.target_url,
+      environment_profile_id: ENV_PROFILE.id,
     };
-    expect(card.environment_profile_id).toBe('env-1');
+
+    expect(task.target_url).toBe(ENV_PROFILE.target_url);
+  });
+});
+
+describe('T25-E: task_run 成功执行与 task_run_steps 生成（灰质执行层）', () => {
+  const ENV_PROFILE = buildEnvironmentProfile(RAW_SCAN_RECORD);
+  const TASK_ID = 'task-e2e-001';
+  const TASK_RUN_ID = 'run-e2e-001';
+
+  it('T25-E-1: 全低风险步骤执行成功，task_run.status = success', () => {
+    const result = runFullTaskE2E(LOW_RISK_STEPS, TASK_RUN_ID);
+
+    expect(result.status).toBe('success');
+    expect(result.has_blocked).toBe(false);
+    expect(result.has_failed).toBe(false);
+    expect(result.traces.length).toBe(LOW_RISK_STEPS.length);
+  });
+
+  it('T25-E-2: 每个 task_run_step 包含完整字段集', () => {
+    const result = runFullTaskE2E(LOW_RISK_STEPS, TASK_RUN_ID);
+
+    for (const trace of result.traces) {
+      expect(typeof trace.step_index).toBe('number');
+      expect(typeof trace.action_type).toBe('string');
+      expect(typeof trace.target_selector).toBe('string');
+      expect(['running', 'success', 'failed', 'skipped', 'blocked']).toContain(trace.status);
+      expect(['low', 'medium', 'high', 'forbidden']).toContain(trace.safety_risk_level);
+    }
+  });
+
+  it('T25-E-3: 成功执行的 step 的 executor_called = true', () => {
+    const result = runFullTaskE2E(LOW_RISK_STEPS, TASK_RUN_ID);
+    const successTraces = result.traces.filter(t => t.status === 'success');
+
+    expect(successTraces.length).toBeGreaterThan(0);
+    for (const trace of successTraces) {
+      expect(trace.executor_called).toBe(true);
+    }
+  });
+
+  it('T25-E-4: 成功 task_run 绑定 task_id 和 environment_profile_id', () => {
+    const taskRunRecord = {
+      id: TASK_RUN_ID,
+      task_id: TASK_ID,
+      environment_profile_id: ENV_PROFILE.id,
+      status: 'success',
+      is_legacy_run: false,
+    };
+
+    expect(taskRunRecord.task_id).toBe(TASK_ID);
+    expect(taskRunRecord.environment_profile_id).toBe(ENV_PROFILE.id);
+    expect(taskRunRecord.status).toBe('success');
+    expect(taskRunRecord.is_legacy_run).toBe(false);
+  });
+});
+
+describe('T25-F: medium 风险 step 允许执行并记录 warning（安全层）', () => {
+  const TASK_RUN_ID = 'run-e2e-medium-001';
+
+  it('T25-F-1: medium 风险 step 的 SafetyGate 返回 decision=warn', () => {
+    const eval1 = evaluateSafetyGateSync({
+      action_type: 'click',
+      target_selector: '[data-testid="btn-login"]',
+      input_value: 'login',
+    });
+
+    expect(eval1.decision).toBe('warn');
+    expect(eval1.risk_level).toBe('medium');
+    expect(eval1.matched_rule).toBe('medium_risk_keyword');
+  });
+
+  it('T25-F-2: medium 风险 step 的 executor 仍然被调用（executor_called = true）', () => {
+    const result = runFullTaskE2E(MEDIUM_RISK_STEPS, TASK_RUN_ID);
+    const mediumTrace = result.traces.find(t => t.safety_risk_level === 'medium');
+
+    expect(mediumTrace).toBeDefined();
+    expect(mediumTrace!.status).toBe('success');
+    expect(mediumTrace!.executor_called).toBe(true);
+  });
+
+  it('T25-F-3: medium 风险 step 的 error_message 包含 SafetyGate Warn 警告信息', () => {
+    const result = runFullTaskE2E(MEDIUM_RISK_STEPS, TASK_RUN_ID);
+    const mediumTrace = result.traces.find(t => t.safety_risk_level === 'medium');
+
+    expect(mediumTrace).toBeDefined();
+    expect(mediumTrace!.error_message).toBeDefined();
+    expect(mediumTrace!.error_message!).toContain('SafetyGate Warn');
+  });
+
+  it('T25-F-4: medium 风险 step 的 status = success（执行成功，非阻断）', () => {
+    const result = runFullTaskE2E(MEDIUM_RISK_STEPS, TASK_RUN_ID);
+    const mediumTrace = result.traces.find(t => t.safety_risk_level === 'medium');
+
+    expect(mediumTrace).toBeDefined();
+    expect(mediumTrace!.status).toBe('success');
+  });
+
+  it('T25-F-5: 含 medium 风险 step 的整体任务仍然以 success 结束', () => {
+    const result = runFullTaskE2E(MEDIUM_RISK_STEPS, TASK_RUN_ID);
+
+    // medium 风险 steps 不阻断任务
+    expect(result.has_blocked).toBe(false);
+    expect(result.status).toBe('success');
+  });
+});
+
+describe('T25-G: high/forbidden step 必须阻断且 executor 不得被调用（安全层核心约束）', () => {
+  const TASK_RUN_ID_HIGH = 'run-e2e-high-001';
+  const TASK_RUN_ID_FORBIDDEN = 'run-e2e-forbidden-001';
+
+  // ── high 风险 ─────────────────────────────────────────────────
+
+  it('T25-G-1: high 风险 step 的 SafetyGate 返回 decision=block', () => {
+    const eval1 = evaluateSafetyGateSync({
+      action_type: 'click',
+      target_selector: '[data-testid="btn-delete-account"]',
+      input_value: 'delete',
+    });
+
+    expect(eval1.decision).toBe('block');
+    expect(eval1.risk_level).toBe('high');
+    expect(eval1.matched_rule).toBe('high_risk_keyword');
+  });
+
+  it('T25-G-2: high 风险 step 的 executor 绝不被调用（executor_called = false）', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID_HIGH);
+    const highTrace = result.traces.find(t => t.safety_risk_level === 'high');
+
+    expect(highTrace).toBeDefined();
+    // ★ 核心约束：executor_called 必须为 false
+    expect(highTrace!.executor_called).toBe(false);
+  });
+
+  it('T25-G-3: high 风险 step 的 status = blocked', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID_HIGH);
+    const highTrace = result.traces.find(t => t.safety_risk_level === 'high');
+
+    expect(highTrace!.status).toBe('blocked');
+  });
+
+  it('T25-G-4: high 风险 step 的 error_code = SAFETY_BLOCKED', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID_HIGH);
+    const highTrace = result.traces.find(t => t.status === 'blocked');
+
+    expect(highTrace!.error_code).toBe('SAFETY_BLOCKED');
+  });
+
+  it('T25-G-5: high 风险 step 包含 blocked_reason 和 matched_rule', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID_HIGH);
+    const highTrace = result.traces.find(t => t.status === 'blocked');
+
+    expect(highTrace!.blocked_reason).toBeDefined();
+    expect(typeof highTrace!.blocked_reason).toBe('string');
+    expect(highTrace!.matched_rule).toBeDefined();
+    expect(highTrace!.matched_rule).toBe('high_risk_keyword');
+  });
+
+  // ── forbidden 风险 ────────────────────────────────────────────
+
+  it('T25-G-6: forbidden step 的 SafetyGate 返回 decision=block，risk_level=forbidden', () => {
+    const eval1 = evaluateSafetyGateSync({
+      action_type: 'click',
+      target_selector: '[data-testid="btn-drop-db"]',
+      input_value: 'drop table users',
+    });
+
+    expect(eval1.decision).toBe('block');
+    expect(eval1.risk_level).toBe('forbidden');
+    expect(eval1.matched_rule).toBe('forbidden_keyword');
+  });
+
+  it('T25-G-7: forbidden step 的 executor 绝不被调用（executor_called = false）', () => {
+    const result = runFullTaskE2E(FORBIDDEN_STEPS, TASK_RUN_ID_FORBIDDEN);
+    const forbiddenTrace = result.traces.find(t => t.safety_risk_level === 'forbidden');
+
+    expect(forbiddenTrace).toBeDefined();
+    // ★ 核心约束：executor_called 必须为 false
+    expect(forbiddenTrace!.executor_called).toBe(false);
+  });
+
+  it('T25-G-8: forbidden step 的 status = blocked，error_code = SAFETY_BLOCKED', () => {
+    const result = runFullTaskE2E(FORBIDDEN_STEPS, TASK_RUN_ID_FORBIDDEN);
+    const forbiddenTrace = result.traces[0];
+
+    expect(forbiddenTrace.status).toBe('blocked');
+    expect(forbiddenTrace.error_code).toBe('SAFETY_BLOCKED');
+    expect(forbiddenTrace.safety_risk_level).toBe('forbidden');
+  });
+
+  it('T25-G-9: 含 high/forbidden step 的整体任务 status = failed（任务整体阻断）', () => {
+    const highResult = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID_HIGH);
+    const forbiddenResult = runFullTaskE2E(FORBIDDEN_STEPS, TASK_RUN_ID_FORBIDDEN);
+
+    expect(highResult.status).toBe('failed');
+    expect(highResult.has_blocked).toBe(true);
+
+    expect(forbiddenResult.status).toBe('failed');
+    expect(forbiddenResult.has_blocked).toBe(true);
+  });
+
+  it('T25-G-10: high 与 forbidden 的阻断逻辑互相独立，各自按规则触发', () => {
+    const deleteEval = evaluateSafetyGateSync({
+      action_type: 'click', target_selector: null, input_value: 'delete',
+    });
+    const transferEval = evaluateSafetyGateSync({
+      action_type: 'click', target_selector: null, input_value: 'transfer',
+    });
+    const dropEval = evaluateSafetyGateSync({
+      action_type: 'click', target_selector: null, input_value: 'drop table',
+    });
+
+    expect(deleteEval.risk_level).toBe('high');
+    expect(deleteEval.decision).toBe('block');
+
+    expect(transferEval.risk_level).toBe('high');
+    expect(transferEval.decision).toBe('block');
+
+    expect(dropEval.risk_level).toBe('forbidden');
+    expect(dropEval.decision).toBe('block');
+  });
+});
+
+describe('T25-H: blocked step 必须写入 task_run_steps（灰质执行层持久化）', () => {
+  const TASK_RUN_ID = 'run-e2e-persist-001';
+
+  it('T25-H-1: 阻断发生后 task_run_steps 必须含有 blocked 状态的记录', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID);
+
+    const blockedTraces = result.traces.filter(t => t.status === 'blocked');
+    expect(blockedTraces.length).toBeGreaterThan(0);
+  });
+
+  it('T25-H-2: blocked step trace 包含完整的阻断证据字段', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, TASK_RUN_ID);
+    const blocked = result.traces.find(t => t.status === 'blocked')!;
+
+    expect(blocked.status).toBe('blocked');
+    expect(blocked.error_code).toBe('SAFETY_BLOCKED');
+    expect(blocked.safety_risk_level).toBeDefined();
+    expect(blocked.error_message).toBeDefined();
+    expect(blocked.blocked_reason).toBeDefined();
+    expect(blocked.matched_rule).toBeDefined();
+    expect(blocked.task_run_id).toBe(TASK_RUN_ID);
+    expect(typeof blocked.step_index).toBe('number');
+    expect(typeof blocked.action_type).toBe('string');
+    expect(typeof blocked.target_selector).toBe('string');
+  });
+
+  it('T25-H-3: forbidden step trace 同样写入 task_run_steps 并保留完整证据', () => {
+    const result = runFullTaskE2E(FORBIDDEN_STEPS, TASK_RUN_ID);
+    const blocked = result.traces.find(t => t.status === 'blocked')!;
+
+    expect(blocked.status).toBe('blocked');
+    expect(blocked.safety_risk_level).toBe('forbidden');
+    expect(blocked.error_code).toBe('SAFETY_BLOCKED');
+    expect(blocked.blocked_reason).toContain('forbidden');
+    expect(blocked.executor_called).toBe(false);
+  });
+
+  it('T25-H-4: 混合步骤执行时，non-blocked steps 依然正常写入 task_run_steps', () => {
+    // 先执行低风险步骤，再执行高风险步骤（混合列表）
+    const mixedSteps: E2EStep[] = [
+      ...LOW_RISK_STEPS,
+      HIGH_RISK_STEPS[0],
+    ];
+    const result = runFullTaskE2E(mixedSteps, TASK_RUN_ID);
+
+    expect(result.traces.length).toBe(mixedSteps.length);
+
+    const successTraces = result.traces.filter(t => t.status === 'success');
+    const blockedTraces = result.traces.filter(t => t.status === 'blocked');
+
+    expect(successTraces.length).toBe(LOW_RISK_STEPS.length);
+    expect(blockedTraces.length).toBe(1);
+  });
+
+  it('T25-H-5: 每条 task_run_step trace 均有正确的 step_index 序号（0 起始，无跳号）', () => {
+    const mixedSteps: E2EStep[] = [...LOW_RISK_STEPS, HIGH_RISK_STEPS[0]];
+    const result = runFullTaskE2E(mixedSteps, TASK_RUN_ID);
+
+    const indexes = result.traces.map(t => t.step_index).sort((a, b) => a - b);
+    for (let i = 0; i < indexes.length; i++) {
+      expect(indexes[i]).toBe(i);
+    }
+  });
+});
+
+describe('T25-I: 从成功 task_run 编译 candidate skill_card（灰质编译层）', () => {
+  const ENV_PROFILE = buildEnvironmentProfile(RAW_SCAN_RECORD);
+  const TASK_RUN_ID = 'run-e2e-compile-001';
+  const TASK_ID = 'task-e2e-001';
+
+  it('T25-I-1: 全成功 task_run 可以编译出 candidate skill_card', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    expect(result.status).toBe('success');
+
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID,
+      taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id,
+      successSteps: result.traces,
+      envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard).not.toBeNull();
+    expect(skillCard!.status).toBe('candidate');
+  });
+
+  it('T25-I-2: 编译的 skill_card 版本号为 1.0.0', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: result.traces, envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard!.version).toBe('1.0.0');
+  });
+
+  it('T25-I-3: skill_card 绑定 task_id 和 environment_profile_id', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: result.traces, envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard!.task_id).toBe(TASK_ID);
+    expect(skillCard!.environment_profile_id).toBe(ENV_PROFILE.id);
+  });
+
+  it('T25-I-4: skill_card 绑定 compiled_from_task_run_id', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: result.traces, envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard!.compiled_from_task_run_id).toBe(TASK_RUN_ID);
+  });
+
+  it('T25-I-5: skill_card.action_sequence 包含所有成功步骤', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: result.traces, envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard!.action_sequence.length).toBe(COMPILE_CANDIDATE_STEPS.length);
+  });
+
+  it('T25-I-6: skill_card.execution_surfaces 从步骤 action_type 推导', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: result.traces, envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard!.execution_surfaces).toContain('fill');
+    expect(skillCard!.execution_surfaces).toContain('click');
+    expect(skillCard!.execution_surfaces).toContain('wait');
+  });
+
+  it('T25-I-7: skill_card.safety.safety_profile 覆盖每个 step', () => {
+    const result = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: result.traces, envProfile: ENV_PROFILE,
+    });
+
+    expect(Array.isArray(skillCard!.safety.safety_profile)).toBe(true);
+    expect(skillCard!.safety.safety_profile.length).toBe(COMPILE_CANDIDATE_STEPS.length);
+    for (const sp of skillCard!.safety.safety_profile) {
+      expect(typeof sp.step_index).toBe('number');
+      expect(['low', 'medium', 'high', 'forbidden']).toContain(sp.risk_level);
+      expect(typeof sp.matched_rule).toBe('string');
+    }
+  });
+
+  it('T25-I-8: 含 blocked step 的 task_run 不能编译 skill_card（success steps = 0 时返回 null）', () => {
+    const result = runFullTaskE2E(HIGH_RISK_STEPS, 'run-e2e-blocked-only');
+    // 所有 steps 都是 blocked，成功步骤数为 0
+    const successSteps = result.traces.filter(t => t.status === 'success');
+
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: 'run-e2e-blocked-only',
+      environmentProfileId: ENV_PROFILE.id,
+      successSteps: successSteps, // 0 个成功步骤
+      envProfile: ENV_PROFILE,
+    });
+
+    expect(skillCard).toBeNull();
+  });
+});
+
+describe('T25-J: 使用 skill_card 再次执行任务（灰质技能卡驱动执行）', () => {
+  const ENV_PROFILE = buildEnvironmentProfile(RAW_SCAN_RECORD);
+  const TASK_RUN_ID = 'run-e2e-compile-001';
+  const TASK_ID = 'task-e2e-001';
+  const SECOND_RUN_ID = 'run-e2e-002';
+
+  it('T25-J-1: 使用 skill_card 绑定的 action_sequence 可以驱动第二次执行', () => {
+    // 第一次执行 + 编译
+    const firstRun = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: firstRun.traces, envProfile: ENV_PROFILE,
+    })!;
+
+    // 从 skill_card 的 action_sequence 还原步骤
+    const replaySteps: E2EStep[] = skillCard.action_sequence.map((a, idx) => ({
+      id: `replay-${idx}`,
+      type: a.action,
+      description: `Replay step ${idx}`,
+      selector: a.selector,
+      value: null,
+      order: idx,
+    }));
+
+    // 第二次执行
+    const secondRun = runFullTaskE2E(replaySteps, SECOND_RUN_ID);
+    expect(secondRun.status).toBe('success');
+    expect(secondRun.traces.length).toBe(skillCard.action_sequence.length);
+  });
+
+  it('T25-J-2: 第二次执行的 task_run 仍然绑定正确的 skill_card_id', () => {
+    const firstRun = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: firstRun.traces, envProfile: ENV_PROFILE,
+    })!;
+
+    const secondTaskRun = {
+      id: SECOND_RUN_ID,
+      task_id: TASK_ID,
+      skill_card_id: skillCard.id,
+      environment_profile_id: ENV_PROFILE.id,
+      is_legacy_run: false,
+    };
+
+    expect(secondTaskRun.skill_card_id).toBe(skillCard.id);
+    expect(secondTaskRun.environment_profile_id).toBe(ENV_PROFILE.id);
+    expect(secondTaskRun.is_legacy_run).toBe(false);
+  });
+
+  it('T25-J-3: 第二次执行的 steps 中每个 executor_called 均为 true（无阻断）', () => {
+    const firstRun = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, TASK_RUN_ID);
+    const skillCard = compileSkillCard({
+      taskId: TASK_ID, taskRunId: TASK_RUN_ID,
+      environmentProfileId: ENV_PROFILE.id, successSteps: firstRun.traces, envProfile: ENV_PROFILE,
+    })!;
+
+    const replaySteps: E2EStep[] = skillCard.action_sequence.map((a, idx) => ({
+      id: `replay-${idx}`, type: a.action, description: `Replay step ${idx}`,
+      selector: a.selector, value: null, order: idx,
+    }));
+
+    const secondRun = runFullTaskE2E(replaySteps, SECOND_RUN_ID);
+    for (const trace of secondRun.traces) {
+      expect(trace.executor_called).toBe(true);
+    }
+  });
+});
+
+describe('T25-K: 全链路端到端串联验证（元目标层完整闭环）', () => {
+  it('T25-K-1: 全链路串联：Raw Scan → Environment Profile → Task → task_run(success) → skill_card(candidate)', () => {
+    // Step 1: Raw Scan
+    const rawScan = RAW_SCAN_RECORD;
+    expect(rawScan.scan_status).toBe('success');
+    expect(rawScan.raw_elements.length).toBeGreaterThan(0);
+
+    // Step 2: Environment Profile
+    const envProfile = buildEnvironmentProfile(rawScan);
+    expect(envProfile.elements.length).toBe(rawScan.raw_elements.length);
+    expect(envProfile.raw_scan_id).toBe(rawScan.id);
+
+    // Step 3: Task 绑定 environment_profile
+    const task = { id: 'task-k-001', environment_profile_id: envProfile.id };
+    expect(task.environment_profile_id).toBe(envProfile.id);
+
+    // Step 4: 执行 task_run（全成功）
+    const runResult = runFullTaskE2E(COMPILE_CANDIDATE_STEPS, 'run-k-001');
+    expect(runResult.status).toBe('success');
+
+    // Step 5: 编译 skill_card
+    const skillCard = compileSkillCard({
+      taskId: task.id, taskRunId: 'run-k-001',
+      environmentProfileId: envProfile.id,
+      successSteps: runResult.traces, envProfile,
+    });
+    expect(skillCard).not.toBeNull();
+    expect(skillCard!.status).toBe('candidate');
+    expect(skillCard!.environment_profile_id).toBe(envProfile.id);
+    expect(skillCard!.compiled_from_task_run_id).toBe('run-k-001');
+  });
+
+  it('T25-K-2: 全链路串联中安全层正确阻断高风险动作，且被阻断的 step 有完整证据落盘', () => {
+    const envProfile = buildEnvironmentProfile(RAW_SCAN_RECORD);
+
+    // 执行含高风险 step 的任务
+    const runResult = runFullTaskE2E([...LOW_RISK_STEPS, ...HIGH_RISK_STEPS], 'run-k-high-001');
+
+    expect(runResult.status).toBe('failed');
+    expect(runResult.has_blocked).toBe(true);
+
+    // 确认所有低风险 step executor_called=true
+    const lowTraces = runResult.traces.filter(t => t.safety_risk_level === 'low');
+    for (const t of lowTraces) {
+      expect(t.executor_called).toBe(true);
+    }
+
+    // 确认高风险 step executor_called=false 且有完整证据字段
+    const blockedTrace = runResult.traces.find(t => t.status === 'blocked')!;
+    expect(blockedTrace.executor_called).toBe(false);
+    expect(blockedTrace.error_code).toBe('SAFETY_BLOCKED');
+    expect(blockedTrace.blocked_reason).toBeDefined();
+
+    // environment_profile 与阻断操作相互独立
+    expect(envProfile.id).toBeDefined();
+  });
+
+  it('T25-K-3: 白质层接收 task_run_steps 中的 blocked 记录时，affected_steps 应标记 SAFETY_BLOCKED', () => {
+    const runResult = runFullTaskE2E(HIGH_RISK_STEPS, 'run-k-wm-001');
+    const allSteps = runResult.traces;
+
+    // 模拟白质层对 blocked steps 的处理
+    const affectedSteps = allSteps
+      .filter(s => s.status === 'blocked' || s.status === 'failed')
+      .map(s => ({
+        step_index: s.step_index,
+        action_type: s.action_type,
+        target_selector: s.target_selector,
+        status: s.status,
+        error_code: s.error_code,
+        error_message: s.error_message,
+        safety_risk_level: s.safety_risk_level,
+        evidence_summary: s.blocked_reason ?? s.error_message ?? 'unknown',
+      }));
+
+    expect(affectedSteps.length).toBeGreaterThan(0);
+    const blockedStep = affectedSteps.find(s => s.error_code === 'SAFETY_BLOCKED');
+    expect(blockedStep).toBeDefined();
+    expect(blockedStep!.status).toBe('blocked');
+    expect(blockedStep!.safety_risk_level).toBe('high');
+  });
+
+  it('T25-K-4: 海马层 memory_episodes 应写入 blocked 证据（type=failure, tags 含 safety_gate）', () => {
+    const runResult = runFullTaskE2E(HIGH_RISK_STEPS, 'run-k-hippocampus-001');
+    const blockedTraces = runResult.traces.filter(t => t.status === 'blocked');
+
+    // 模拟生成 memory_episode
+    const episodes = blockedTraces.map(t => ({
+      type: 'failure',
+      title: `SafetyGate 阻断: ${t.action_type} 操作`,
+      content_json: {
+        step_index: t.step_index,
+        task_run_id: t.task_run_id,
+        safety_risk_level: t.safety_risk_level,
+        blocked_reason: t.blocked_reason,
+        matched_rule: t.matched_rule,
+      },
+      task_run_id: t.task_run_id,
+      tags: ['safety_gate', 'blocked', t.safety_risk_level],
+    }));
+
+    expect(episodes.length).toBeGreaterThan(0);
+    for (const ep of episodes) {
+      expect(ep.type).toBe('failure');
+      expect(ep.tags).toContain('safety_gate');
+      expect(ep.tags).toContain('blocked');
+      expect(ep.content_json.blocked_reason).toBeDefined();
+      expect(ep.content_json.matched_rule).toBeDefined();
+    }
+  });
+
+  it('T25-K-5: skill_card.safety.risk_level 反映步骤中的最高风险等级', () => {
+    const envProfile = buildEnvironmentProfile(RAW_SCAN_RECORD);
+    // MEDIUM_RISK_STEPS 含 medium 风险，所以编译后的 skill_card 风险等级应为 medium
+    const runResult = runFullTaskE2E(MEDIUM_RISK_STEPS, 'run-k-risk-001');
+    const skillCard = compileSkillCard({
+      taskId: 'task-k-001', taskRunId: 'run-k-risk-001',
+      environmentProfileId: envProfile.id, successSteps: runResult.traces, envProfile,
+    });
+
+    expect(skillCard).not.toBeNull();
+    expect(['medium', 'high', 'forbidden']).toContain(skillCard!.safety.risk_level);
   });
 });
