@@ -2,7 +2,8 @@
 
 > 灰质-白质自举智能体网页自动化平台
 > A brain-inspired self-evolving web automation agent platform.
-
+## 体验地址
+https://app-br1wyyyd6dq9.appmiaoda.com/dashboard
 ## 介绍
 
 **Black-White-Brain / GW-Agent** 是一个基于"灰质 / 白质"双速认知结构设计的网页自动化智能体平台。
@@ -537,12 +538,3 @@ Brain-inspired self-evolving web automation agent platform.
 
 [源码导出帮助文档](https://cloud.baidu.com/doc/MIAODA/s/Xmewgmsq7)
 
-## 许可证
-
-当前项目尚未明确开源许可证。
-
-如果计划公开发布，建议补充一个 `LICENSE` 文件。常见选择：
-
-* MIT License：宽松开源，适合个人项目和原型项目。
-* Apache License 2.0：更重视专利授权与企业使用。
-* Proprietary：暂不开放授权，仅展示项目代码。
